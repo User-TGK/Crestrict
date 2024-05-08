@@ -1,0 +1,149 @@
+\chapter{Evaluation}\label{chapt:evaluation}
+To be able to test whether a given Crestrict program contains undefined behavior due to 
+violations of the restrict semantics, we have developed an interpreter which can run
+such programs and dynamically track whether the operations it performs lead to undefined behavior.
+This implementation makes the semantics \textit{executable} and is described in section \ref{section:implementation}. 
+We have created a test suite composed of 96 test programs.
+For each program we expect it to have either defined or undefined behavior according to the ISO/IEC standard definition of restrict.
+Furthermore, all tests we classify as \textit{defined} do not lead to incorrect program outputs
+when compiled and optimized by GCC and Clang.
+The categorization and other details of this test suite are described in section \ref{section:feature-categorization}.
+
+\section{Implementation}\label{section:implementation}
+The \textsc{Crestrict} interpreter is written in the Rust programming language.
+It utilizes the \textsc{lang-c} parser\footnote{Available at \url{https://github.com/vickenty/lang-c}} crate,
+which parses C source files into an abstract syntax tree (AST).
+This AST is converted into a Crestrict AST.
+If any unsupported language constructs were used, an error is returned immediately.
+The AST is then type checked.
+If type checking failed an error is returned immediately.
+The Crestrict program is then interpreted according to the operational rules,
+resulting in either a result code or an error message indicating what problem occurred, \ie 
+the execution aborts immediately upon detecting undefined behavior
+due to memory operations or a violation of the restrict semantics. 
+
+There are only a few differences between the implementation and the operational semantics presented in chapter
+\ref{chapter:crestrict} which are worth mentioning.
+None of these differences are fundamental for the semantics, but rather an implementation choice that had to be made.
+
+Firstly, instead of an \textdom{$\Optiontype{\tau}$} type denoting failure, the implementation uses 
+Rust's \quad \texttt{Result}\textlangle$\tau$, \textdom{String}\textrangle \ type. 
+The \texttt{Err} constructor is annotated with a string providing information as to where an error occurred.
+
+Secondly, the implementation accepts a slightly larger language than the one presented in section \ref{section:syntax}:
+initializers for global and local variables (including function calls) are also supported.
+The initializer expressions are evaluated in declaration order and their values are directly stored into the memory.
+Importantly, initializer values do \textbf{not} alter the restrict stack (as is also the case for the \cink{} semantics).
+This choice is supported by the standard definition, \ie an initializer does not \textit{modify} an object as there was
+nothing beforehand.
+Finally, declarations inside the initial statement of a for loop are also supported.
+The variable declaration is moved into the list of variable declarations of the function 
+(which may only occur at the beginning), and the initializer is treated is described above.
+
+\section{Feature categorization}\label{section:feature-categorization}
+To the best of our knowledge, there is no publically available test suite dedicated to
+the restrict type qualifier (although tests do exist as part of other test suites).
+Therefore, we created our own suite to evaluate \textsc{Crestrict} and \textsc{kcc} against
+(and when possible we have included tests from other test suites).
+The test suite only contains programs whose syntax is supported by the Crestrict language
+and was created simultaneously with the refined restrict semantics, due to which \textsc{Crestrict} passes all tests.
+All the examples which were presented in section \ref{sec:cink-incorrect} are included in the test suite.
+% In this section we present the feature categorization of the test suite.
+We note that we have no tests for assignments between restrict pointers,
+as this was out of scope for this thesis (section \ref{section:iso-definition}).
+
+The features are categorized based on the \textit{context} in which a restrict qualified pointer occurs,
+which affects how the presence of the type qualifier should be interpreted.
+For completeness, the restrict-related tests from the \textsc{kcc} interpreter and the
+examples from the ISO/IEC standard are also included.
+An overview of the different features and the number of defined/undefined tests is given in table \ref{table:feature-categorization}.
+We will also point out for which kind of tests per feature \textsc{kcc} gives another result than \textsc{Crestrict}. 
+For clarity, note that \textsc{kcc} is a much more mature tool in the sense that it is able
+to detect a lot of different kinds of undefined behavior and accepts a much larger language as input.
+\textsc{Crestrict} on the other hand has the sole focus of detecting undefined behavior which arises due to uses of restrict.
+
+\begin{table}[H]
+\centering
+\noindent\begin{tabularx}{\textwidth}{lccX}
+\toprule
+\textbf{Feature}              & \textbf{\#DB}   & \textbf{\#UB} & \textbf{Description}                            \\ \midrule
+\textbf{Aggregate type}       &      2          &       3       & Restrict pointers within an aggregate datatype. \\
+\textbf{Global}               &      5          &       4       & Restrict pointers/lvalues with global scope.            \\        
+\textbf{Nested}               &      9          &      29       & Nested pointers with the restrict type qualifier on one of the inner types. \\ \midrule
+\textbf{KCC}                  &      1          &       2       & Tests for restrict from the \textsc{kcc} test suite\footnotemark. \\
+\textbf{Standard}             &      2          &       1       & Restrict examples from the ISO/IEC C11 standard \cite{ISO:2018:III}. \\
+\textbf{Other}                &     18          &      19       & Other tests representing possible useful programs for restrict. \\ \midrule
+\textbf{Total}                &     38          &      58       & Total: 96
+\end{tabularx}
+\caption{Feature categorization}
+\label{table:feature-categorization}
+\end{table}
+\footnotetext{\url{https://github.com/kframework/c-semantics/tree/master/tests}}
+
+In the context of Crestrict, only a single \textbf{Aggregrate type} exists: the array data type.
+The tests for this feature have one or more restrict pointers as part of an array.
+The undefined behavior tests fail for \textsc{kcc}, due to the problem described in section \ref{subsec:indistinguishable-restrict-pointers}.
+
+\textbf{Global} is the feature describing global restrict pointers and global pointers based on some restrict pointer.
+One of the defined behavior tests fails for \textsc{kcc}, due to the problem described in section \ref{subsec:out-of-scope-bases}.
+
+\textbf{Nested} is the feature describing nested pointers with the restrict type qualifier on one of the inner pointer types.
+The defined behavior tests all pass for \textsc{kcc}, but ${\sim}44$\% of the undefined behavior tests fail due to the problem described
+in section \ref{subsec:cink-nested-restrict-pointers}.
+
+\textbf{KCC} has actually eight tests related to restrict.
+Four of them test assignments between restrict pointers and are therefore omitted.
+One test uses unsupported language features (const) and has therefore also been omitted.
+Finally, one test was moved from undefined behavior to defined behavior in our suite,
+because we do not support type casts.
+
+\textbf{Standard} contains the example programs from the ISO/IEC standard.
+Only the two combinations of example two and example three are included, as
+the other examples use unsupported language features (struct) or demonstrate illegal
+assignments between restrict pointers.
+Furthermore, one of the defined behavior tests fails for \textsc{kcc} due to the problem
+described in section \ref{subsec:aliasing-reads}.
+
+Finally, \textbf{Other} contains test programs of both realistic use cases of
+restrict and problematic programs not captured by the features listed above.
+Two of the defined behavior tests fail for \textsc{kcc} due to the aliasing loads problem discussed in
+section \ref{subsec:aliasing-reads} and two of the undefined behavior tests fail for \textsc{kcc}
+due to the problem with the deferred check (section \ref{subsec:cink-inlining-semantics}) 
+and call to free (section \ref{subsec:call-to-free}).
+
+
+% \begin{table}[H]
+% \begin{tabular}{@{}ll@{}}
+% \toprule
+% \textbf{Definition entry 6.7.3.1} & \textbf{Feature}                                                \\ \midrule
+% \textbf{(2)}                      & \textbf{(a)} Identify the restrict block $B$                    \\
+% \textbf{(3)}                      & \textbf{(a)} Identify lvalues based on some restrict object $P$ \\
+% \multirow[t]{4}{*}{\textbf{(4)}}     & \textb f{(a)} Track $X$ is modified                                \\
+%                                     & \textbf{(b)} Track $P$ is modified by modification of $X$                                \\
+%                                     & \textbf{(c)} Allow aliasing reads                               \\
+%                                     & \textbf{(d)} Basing restrict pointers on each other            
+% \end{tabular}
+% \end{table}
+
+
+% \begin{itemize}
+%     \item \textbf{2a}: the bases derived from the restrict qualified pointer must be
+
+%     \item \textbf{3a}: the semantics are more strict than the standard.
+% \end{itemize}
+
+
+
+
+
+
+% Dynamic features:
+
+% \begin{itemize}
+%     \item Track \textit{based on} provenance (3)
+%     \item Propagate \textit{based on} provenance through scopes (3)
+%     \item Allow aliasing restrict without modification (4)
+%     \item Modification of X implies modification of P (4 - 2)
+%     \item Feature (4 - 2) is transitive
+% \end{itemize}
+

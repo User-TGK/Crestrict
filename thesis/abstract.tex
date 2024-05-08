@@ -1,0 +1,23 @@
+\begin{abstract}
+Even after more than two decades since the first introduction of the \textit{restrict} type qualifier in the
+C programming language its definition in the ISO/IEC standard raises questions and confusion.
+For example, recently several proposals for a new definition have been submitted to the international standardization working group WG14, who maintain the standard.
+Restrict effectively serves as a \textit{promise} from the programmer to the compiler that a restrict qualified
+pointer will not \textit{alias} with specific other pointers under certain conditions.
+If the promise is broken the program is said to have \textit{undefined behavior}, which may lead to tricky bugs which are difficult to detect.
+
+In this work we take a different direction than (re)defining restrict in natural language.
+We present \textit{Crestrict}, an \textit{operational semantics} which refines the restrict fragment of the \cink{} semantics for undefined behavior by Hathhorn \etall
+Our work redevelops the original \cink{} semantics for restrict in a functional style.
+We find six programs for which we argue the semantics gives either too much or too little undefined behavior with respect
+to the ISO/IEC standard and/or existing compiler optimizations.
+From these programs we propose several refinements and integrate the new Crestrict semantics in a small C-like language. 
+We also implement the semantics in an interpreter to be able to test a given C program for undefined behavior induced by restrict.
+We evaluate Crestrict under an extensive test suite and show that it gives more undefined behavior for test programs for which the \cink{} semantics
+gives too little undefined behavior and vice versa.
+
+With this work we give an alternative resource for restrict, which we argue to be more complete than existing work.
+In particular, we provide a way for C programmers to systematically
+test whether a given program utilizing restrict induces undefined behavior.
+In the future the semantics could be used to prove restrict related compiler optimizations to be correct.
+\end{abstract}

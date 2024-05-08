@@ -1,0 +1,41 @@
+*_gcc
+*_clang
+a.out
+*.o
+
+.tmp*
+.krun*
+kcc_config
+
+# DB/*
+# UB/*
+# borrows/*
+
+# !DB/*.c
+# !UB/*.c
+
+# !DB/array/*.c
+# !UB/array/*.c
+
+# # !DB/array
+# # !UB/array
+
+# !DB/global
+# !UB/global
+
+# !DB/kcc
+# !UB/kcc
+
+# !DB/nested
+# !UB/nested
+
+# !DB/scopes
+# !UB/scopes
+
+# !DB/standard
+# !UB/standard
+
+# !DB/thesis
+# !UB/thesis
+
+# !borrows/*.c

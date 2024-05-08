@@ -1,0 +1,55 @@
+\begin{frame}[fragile]
+    \frametitle{Where are bases added to the pointer value?}
+
+\begin{minted}[escapeinside=||,mathescape=true]{c}
+// Scope $\scope{main}$
+{
+    int x; // $\&x = \Blockvar_x$
+    int* restrict p = &x; // $\& \Blockvar_p$
+
+    int* q = p; // Propagate the bases to q
+    *p = ...;   // Used directly in lvalue position 
+}
+\end{minted}
+{
+\hspace*{-10pt}
+\scriptsize
+\begin{prooftree}
+\AxiomC{$E(p) = \Blockvar_p$}
+\RightLabel{\scriptsize{(EId)}}
+\UnaryInfC{$\GEJudgment p, \Statevar \lval \colorbox{red!20}{$(\Blockvar_p, \emptyset)$}, \Statevar'$}
+
+\AxiomC{$(\textcode{load} \ \Statevar' \ (\Blockvar_p, \emptyset)) = \ptr{(\Blockvar_x, \emptyset)}, \Statevar''$}
+
+\AxiomC{$\isrestrict{e}$}
+
+\RightLabel{\colorbox{red!20}{\scriptsize(ELvalConvRestrict)}}
+\TrinaryInfC{$\GEJudgment p, \Statevar \rval \textcode{add\_prov} \ (\ptr{(\Blockvar_x, \emptyset)}) \ \colorbox{red!20}{$((\Blockvar_p, \emptyset), \scope{main})$}, \Statevar'' $}
+
+% \RightLabel{\colorbox{red!20}{\scriptsize(Reduction)}}
+% \UnaryInfC{$\GEJudgment p \rval \ptr{(\Blockvar_x, \set{((\Blockvar_p, \emptyset), \scope{main})})} $}
+
+\RightLabel{\scriptsize(EDeref)}
+\UnaryInfC{$\GEJudgment *p, \Statevar \lval (\Blockvar_x, \set{\colorbox{red!20}{$((\Blockvar_p, \emptyset), \scope{main})$}}), \Statevar''$}
+
+\end{prooftree}
+}
+% \UnaryInfC{$p \lval l_1$}
+% \AxiomC{$M(l_1) = \ptr{l_2}$}
+% \RightLabel{\scriptsize(LValConv)}
+
+% \BinaryInfC{$p \rval \ptr{l_2}$}
+% \RightLabel{\scriptsize(EDeref)}
+
+% \UnaryInfC{$*p \lval l_2$}
+% \AxiomC{$M(l_2) = \ptr{l_3}$}
+% \RightLabel{\scriptsize(LValConv)}
+
+% \BinaryInfC{$\redm{*p \rval \ptr{l_3}}$}
+% \RightLabel{\scriptsize(EDeref)}
+
+% % \UnaryInfC{$\mathbin{**}p \lval l_3$}
+% \end{prooftree}
+
+\end{frame}
+

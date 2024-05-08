@@ -1,0 +1,57 @@
+\begin{frame}[fragile]
+\frametitle{The \cinkrestrict semantics}
+Two features are jointly used to support restrict:\\
+\begin{enumerate}
+    \item Pointer values have some extra information, called \textbf{\textcolor{blue}{bases}}
+    \begin{itemize}
+        \item Tracks on which restrict qualified pointer(s) a pointer is based
+        \item Used to distinguish pointers to the same address
+    \end{itemize}
+    \vspace*{5pt}
+    \[
+    \begin{array}{lll}
+    \Blockvar \in \Block, \Scopeidvar \in \Scopeid &  :=  & \Intdomain \\
+    \Basesvar \in \Bases & := & \Set{\mypos{$\Block$}{cink-provenance-block} \times \mypos{$\Scopeid$}{cink-provenance-scope}} \\~\\
+    \strut\Val  & \bnfdef   & \ptr{(\mypos{$\Block$}{cink-abstract-val} \times \textcolor{blue}{\Bases})} \ | \ ... 
+    \end{array}
+    \hspace{1000pt minus 1fill}
+    \]
+
+\pause
+
+    \begin{tikzpicture}[overlay, remember picture]
+    \draw[red!30] ([yshift=-2pt]cink-abstract-val.base east)--([yshift=-2pt]cink-abstract-val.base west) to[bend left=25] ++(-.75,-.25) node[red!60, anchor=east] {\footnotesize Address of the pointee};
+    \draw[blue!30] ([yshift=-2pt]cink-provenance-block.base east)--([yshift=-2pt]cink-provenance-block.base west) to[bend left=25] ++(-.75, -.25) node[blue!60, anchor=east] {\footnotesize Address of restrict pointer};
+    \draw[blue!30] ([yshift=-2pt]cink-provenance-scope.base west)--([yshift=-2pt]cink-provenance-scope.base east) to[bend right=25] ++(.75, -.25) node[blue!60, anchor=west] {\footnotesize Restrict pointer declaration scope};
+    
+    \end{tikzpicture}
+\end{enumerate}
+
+\end{frame}
+
+\begin{frame}[fragile]
+    \frametitle{The \cinkrestrict semantics}
+    Two features are jointly used to support restrict:\\
+    \begin{enumerate}
+        \setcounter{enumi}{1}
+        \item The \textbf{restrict stack} tracks what memory accesses are allowed by maintaining a per-location \textbf{restrict state}
+    \end{enumerate}
+
+    \[
+    \begin{array}{lll}
+    \Restrictstate  &   \bnfdef     & \mypos{$\onlyread{\Basesvar}$}{cink-stack-or} \ | \ \mypos{$\restricted{\Basesvar}$}{cink-stack-rs} \ | \ \mypos{$\unrestricted$}{cink-stack-un} \\~\\
+    R \in \Restrictstack  & := & \List{\mypos{$\Scopeid$}{cink-stack-scope} \times (\Block \rightarrow \Restrictstate)}
+    \end{array}
+    \hspace{1000pt minus 1fill}
+    \]
+
+\pause
+
+    \begin{tikzpicture}[overlay, remember picture]
+    \draw[red!30] ([yshift=-2pt]cink-stack-or.base east)--([yshift=-2pt]cink-stack-or.base west) to[bend left=25] ++(-.75,-.25) node[red!60, align=left, anchor=east, yshift=-5pt] {\footnotesize Load via \ptr{(\_, \Basesvar)}};
+    \draw[red!30] ([yshift=-2pt]cink-stack-rs.base east)--([yshift=-2pt]cink-stack-rs.base west) to[bend left=25] ++(-.5,-.25) node[red!60, align=left, anchor=center,yshift=-5pt] {\footnotesize Store via \ptr{(\_, \Basesvar)}};
+    \draw[red!30] ([yshift=-2pt]cink-stack-un.base east)--([yshift=-2pt]cink-stack-un.base west) to[bend right=25] ++(.5,-.25) node[red!60, align=left, anchor=west,yshift=-5pt] {\footnotesize Loads via pointers with different bases};
+    \draw[red!30] ([yshift=-2pt]cink-stack-scope.base west)--([yshift=-2pt]cink-stack-scope.base east) to[bend right=25] ++(.75,-.25) node[red!60, align=left, anchor=west] {\footnotesize Scope in which the access occured};
+    \end{tikzpicture}
+
+\end{frame}

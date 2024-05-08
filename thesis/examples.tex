@@ -1,0 +1,423 @@
+\chapter{Restrict by example}\label{chapter:examples}
+In chapter \ref{chap:introduction} we have already seen a simple example of an optimization permitted by restrict.
+To get a better intuition for the applications of restrict, we will look at some more example programs in this chapter.
+In section \ref{section:example-redundant-load} and section \ref{section:example-redundant-store} we show how programs which
+perform redundant memory operations (loads and stores) can be optimized using restrict.
+In section \ref{section-example-memcpy} we show how a potential implementation of C's standard library function
+\textcode{memcpy} specialized for integers can benefit from using restrict.
+Finally, section \ref{section:iso-definition} discusses the official definition of restrict in
+the ISO/IEC C11 standard.
+
+Sections \ref{section:example-redundant-load} and \ref{section:example-redundant-store} use
+x86 assembly code whereas section \ref{section-example-memcpy} uses RISC-V (specifically, RV32IV) assembly code.
+This distinction is made to simplify explaining the effect of restrict on a program,
+but not important for permitting optimizations (\ie all compiled programs could also have been shown
+in the same assembly language).
+
+\section{Redundant load}\label{section:example-redundant-load}
+Consider the function \textcode{foo}, taken from Fasselt's report on C keywords \cite{fasselt2014keywords},
+defined on the left in figure \ref{lst:example-redundant-load}.
+This function takes three integer pointers $a, b$ and $c$ as arguments, of which only pointer $c$ is restrict qualified.
+The body of \textcode{foo} consecutively adds the value of $c$'s pointee (the object referred to by $c$) to the pointees of $a$ and $b$.    
+
+The first observation we make is that the pointer expression $c$ is based on the restrict qualified object $c$ and used to load (\ie an \textit{access}) from its pointee, which we call $X$.
+Because $X$ is accessed through $c$ we know that if $X$ gets modified then all accesses must happen through pointer expressions also based on $c$.
+Secondly, the pointer expressions $a$ and $b$ both store to their pointees (\ie they \textit{modify} the objects they point to), and are \textbf{not} based on $c$.
+A compiler may therefore conclude that both $a$ and $b$ do not alias with $c$.
+
+With this information, the compiler knows that the store at line \ref{lst:example-redundant-load-line-store} does not change the value of $X$.
+When the value of $X$ is required again at line \ref{lst:example-redundant-load-line-load},
+it can simply reuse the previously fetched value instead of performing a new memory load.
+The x86 assembly produced by GCC and Clang when compiling this program without optimizations is shown on the right.
+Line \ref{lst:example-redundant-load-assembly} of the assembly corresponds to the second load of $X$.
+When compiled with optimization flag -O3 this line is omitted by both compilers.
+This optimization does not happen without restrict, which shows that it actually permits the desired optimization.
+
+\begin{figure*}[!h]
+\centering
+\begin{minipage}[t]{0.53\linewidth}
+\centering
+\begin{code}
+\begin{minted}[escapeinside=||,mathescape=true,linenos]{c}
+void foo (int* a, int* b, int* restrict c)
+{
+    *a += *c; // First load of $c$ $\label{lst:example-redundant-load-line-store}$
+    *b += *c; // Redundant reload from $c$ $\label{lst:example-redundant-load-line-load}$
+}
+\end{minted}
+\end{code}
+\end{minipage}%
+\begin{minipage}[t]{0.47\linewidth}
+\centering
+\begin{code}
+\centering
+\begin{minted}[escapeinside=||,mathescape=true,linenos]{nasm}
+foo:
+mov     eax, DWORD PTR [rdx]
+add     DWORD PTR [rdi], eax
+|\colorbox{gray}{mov     eax, DWORD PTR [rdx]}| # Redundant $\label{lst:example-redundant-load-assembly}$
+add     DWORD PTR [rsi], eax
+ret
+\end{minted}
+\end{code}
+\end{minipage}
+\captionof{listing}{Redundant memory load}
+\label{lst:example-redundant-load}
+\end{figure*}
+
+\section{Redundant store}\label{section:example-redundant-store}
+Another optimization permitted by restrict which a compiler may perform is the removal of redundant memory stores.
+Consider the function \textcode{foo}, inspired by Jung \etall's \textcode{example3\_down} function
+in Stacked Borrows \cite{jung2019stacked}, on the left in figure \ref{lst:example-redundant-store}.
+This function takes a restrict qualified pointer $p$ as argument.
+At line \ref{lst:example-redundant-store-redundant-store} the value 10 is stored into
+$p$'s pointee, which we call $X$.
+Because $X$ gets modified, all pointer expressions which also access $X$ must also 
+be based on $p$.
+The call to the externally defined function \textcode{bar} does not get any arguments passed,
+which means that it is not allowed to access $X$!
+This means that when executing line \ref{lst:example-redundant-store-overwritten} the first store
+becomes redundant: it is overwritten without its value having been loaded in between.
+
+The x86 assembly produced by GCC and Clang when compiling this program without optimizations is shown on 
+the right.
+Line \ref{lst:example-redundant-store-assembly} of the assembly corresponds to the first store to $X$.
+When compiled with optimization flag -O3 this line is omitted by Clang, which does not happen when restrict is 
+not present.
+GCC does not perform this optimization, which is fine: an implementor \textit{may} use restrict to perform
+more optimizations, but performing an optimization is by no means required.
+In fact, the ISO/IEC definition explicitly mentions that an implementor may ignore all uses of restrict.
+
+% Inspired by Stacked Borrows example3\_down 
+% Clang: yes, GCC: no
+
+\begin{figure*}[!h]
+\centering
+\begin{minipage}[t]{0.5\linewidth}
+\centering
+\begin{code}
+\begin{minted}[escapeinside=||,mathescape=true,linenos]{c}
+extern void bar();
+
+void foo(int* restrict p)
+{
+    *p = 10; // Redundant store $\label{lst:example-redundant-store-redundant-store}$
+    bar();
+    *p = 11; // Overwritten $\label{lst:example-redundant-store-overwritten}$
+}
+\end{minted}
+\end{code}
+\end{minipage}%
+\begin{minipage}[t]{0.5\linewidth}
+\centering
+\begin{code}
+\centering
+\begin{minted}[escapeinside=||,mathescape=true,linenos]{nasm}
+foo:
+push    rbx
+xor     eax, eax
+mov     rbx, rdi
+|\colorbox{gray}{mov     DWORD PTR [rdi], 10}| # Redundant $\label{lst:example-redundant-store-assembly}$
+call    bar
+mov     DWORD PTR [rbx], 11
+pop     rbx
+ret
+\end{minted}
+\end{code}
+\end{minipage}
+\captionof{listing}{Redundant memory store}
+\label{lst:example-redundant-store}
+\end{figure*}
+
+\section{Memcpy}\label{section-example-memcpy}
+% https://godbolt.org/z/WjszYY5vK 
+% X86 GCC flags: -O3 -march=skylake-avx512 -ffreestanding
+
+% https://godbolt.org/z/KfP74xfhW
+% RISC-V rv32gc clang 14.0.0
+% flags: -O3 -ffreestanding -fno-strict-aliasing -march=rv32gcv -target riscv32 -mllvm --riscv-v-vector-bits-min=256
+
+
+In Listing \ref{Lst:copy} a possible implementation for a function which
+copies $n$ integers from \texttt{src} to \texttt{dst} is given.
+For architectures which have vector operations at their disposal, a modern compiler typically wants to utilize these operations
+to efficiently load the \texttt{src} array and store the retrieved data in the \texttt{dst} array.
+
+LLVM (the compiler backend of Clang among others) is one such compiler, which has an ``auto vectorizer" looking to vectorize parts of the code where possible.
+When we compile the copy function using Clang 14.0.0, the generated RV32IV assembly code indeed shows that vector instructions are utilized.
+
+However, if \texttt{src} and \texttt{dst} point to overlapping regions in memory, such optimizations may not always be performed.
+An example invocation (with $n=8$) which could potentially produce an ``incorrect'' output
+is depicted in figure \ref{Fig:memoryprogressionscopy}: here the destination array has overlap with the source array
+because the \texttt{dst} pointer has the value \texttt{src} + 2.  
+
+Figure \ref{Fig:memorycopy1} depicts an element-wise copy: after two copies
+the incremented \texttt{src} pointer lies within previously changed data, and thus the next copy
+will now refer to this ``new" data. After eight copies, the destination array has become
+\texttt{[1,2,1,2,1,2,1,2]}.
+
+Figure \ref{Fig:memorycopy2} depicts a vectorized copy, with the vector size $= n = 8$.
+Here, the generated code will first load all $8$ integer values from \texttt{src}, and
+then store them with a single instruction in \texttt{dst}. The destination array has become
+\texttt{[1,2,3,4,5,6,7,8]}. 
+
+\newpage
+
+\begin{code}
+\begin{minted}[escapeinside=||,mathescape=true,linenos]{c}
+    void copy(int* /*restrict*/ src, int* /*restrict*/ dst, int n) {
+        for (int i = 0; i < n; ++i) {
+            dst[i] = src[i];
+        }
+    }
+\end{minted}
+\captionof{listing}{A possible implementation of \texttt{copy}}
+\label{Lst:copy}
+\end{code}
+
+\vspace*{2em}
+
+\tikzset{pointer/.style={node distance=3em, text height=0.3ex,text depth=.25ex},
+         cellcopy/.style={gray, dashed, ->, shorten >=1pt, node distance=2mm},
+         cell/.style=   {minimum size=4ex,node distance=-0.14mm}}
+
+\begin{figure}[h]
+\centering
+\begin{subfigure}[b]{\textwidth}
+\begin{tikzpicture}[
+    start chain=src going right,
+    start chain=dst1 going right,
+    start chain=dst2 going right
+]
+    \tikzstyle{every node}=[font=\small]
+
+    % src array
+    \foreach \x in {1,2,...,8,,,\ldots} {
+        \node [cell,draw,on chain=src] {\x};
+    }
+
+    \node [on chain = src] {\texttt{(I) Initial memory state}};
+
+    \node[pointer, above of=src-3] (dstPointer) {dst};
+    \node[pointer, above of=src-1] (srcPointer1) {src};
+    \draw[->, shorten >=1pt] (dstPointer) -- (src-3);
+    \draw[->, shorten >=1pt, rounded corners] (srcPointer1) -- (src-1);
+
+    % dst array 1; start with the first node to apply
+    % the y-shift and then continue right
+    \node [cell,draw, fill=white, on chain=dst1, yshift=-15ex] {1};
+
+    \foreach \x/\col in {2/white,1/gray!30,2/gray!30,5/white,6/white,7/white,8/white,/white,/white,\ldots/white} {
+        \node [cell,draw, fill=\col, on chain=dst1] {\x};
+    }
+
+    \node [on chain = dst1,text width=6cm] {\texttt{(II) Memory state after two individual copies}};
+
+    \node[pointer, above of=dst1-5] (dstPointer) {dst};
+    \node[pointer, above of=dst1-3, color=red] (srcPointer2) {src + 2};
+    \draw[->, shorten >=1pt] (dstPointer) -- (dst1-5);
+    \draw[->, red, shorten >=1pt, fill] (srcPointer2) -- (dst1-3);
+
+    \draw [cellcopy] (src-1) -- (dst1-3);
+    \draw [cellcopy] (src-2) -- (dst1-4);
+
+    % dst array 2; start with the first node to apply
+    % the y-shift and then continue right
+    \node [cell,draw, fill=white, on chain=dst2, yshift=-30ex] {1};
+
+    \foreach \x/\col in {2/white,1/white,2/white,1/gray!30,2/gray!30,1/gray!30,2/gray!30,1/gray!30,2/gray!30,\ldots/white} {
+        \node [cell,draw, fill=\col, on chain=dst2] {\x};
+    }
+
+    \node [on chain = dst2,text width=5cm] {\texttt{(III) Memory state after copy was executed}};
+
+    \node[pointer, above of=dst2-10] (dstPointer) {dst};
+    \node[pointer, above of=dst2-8, color=red] (srcPointer3) {src + 7};
+    \draw[->, shorten >=1pt] (dstPointer) -- (dst2-10);
+    \draw[->, red, shorten >=1pt, fill] (srcPointer3) -- (dst2-8);
+
+    \draw [cellcopy] (dst1-3) -- (dst2-5);
+    \draw [cellcopy] (dst1-4) -- (dst2-6);
+    \draw [cellcopy] (dst1-5) -- (dst2-7);
+    \draw [cellcopy] (dst1-6) -- (dst2-8);
+    \draw [cellcopy] (dst1-7) -- (dst2-9);
+    \draw [cellcopy] (dst1-8) -- (dst2-10);
+
+\end{tikzpicture}
+\caption{Memory progression of element-wise copy $n=8$}
+\label{Fig:memorycopy1}
+\end{subfigure}
+\par\bigskip\bigskip\bigskip
+\begin{subfigure}[b]{\textwidth}
+    \begin{tikzpicture}[
+        start chain=src going right,
+        start chain=dst going right
+    ]
+        \tikzstyle{every node}=[font=\small]
+    
+        % src array
+        \foreach \x in {1,2,...,8,,,\ldots} {
+            \node [cell,draw,on chain=src] {\x};
+        }
+    
+        \node [on chain = src] {\texttt{(I) Initial memory state}};
+    
+        \node[pointer, above of=src-3] (dstPointer) {dst};
+        \node[pointer, above of=src-1] (srcPointer1) {src};
+        \draw[->, shorten >=1pt] (dstPointer) -- (src-3);
+        \draw[->, shorten >=1pt, rounded corners] (srcPointer1) -- (src-1);
+
+        % dst array
+        \node [cell,draw, fill=white, on chain=dst, yshift=-15ex] {1};
+        \node [cell,draw, fill=white, on chain=dst] {2};
+
+        \foreach \x in {1,2,...,8} {
+            \node [cell,draw, fill=gray!30, on chain=dst] {\x};
+        }
+
+        \node [cell,draw, fill=white, on chain=dst] {\ldots};
+        \node [on chain = dst, text width=5cm] {\texttt{(II)  Memory state after vectorized copy was executed}};
+
+        \node[pointer, above of=dst-10] (dstPointer) {dst};
+        \node[pointer, above of=dst-8, color=red] (srcPointer) {src + 7};
+        \draw[->, shorten >=1pt] (dstPointer) -- (dst-10);
+        \draw[->, red, shorten >=1pt, fill] (srcPointer) -- (dst-8);
+
+        \draw [cellcopy] (src-1) -- (dst-3);
+        \draw [cellcopy] (src-2) -- (dst-4);
+        \draw [cellcopy] (src-3) -- (dst-5);
+        \draw [cellcopy] (src-4) -- (dst-6);
+        \draw [cellcopy] (src-5) -- (dst-7);
+        \draw [cellcopy] (src-6) -- (dst-8);
+        \draw [cellcopy] (src-7) -- (dst-9);
+        \draw [cellcopy] (src-8) -- (dst-10);
+
+\end{tikzpicture}
+\caption{Memory progression of vector copy $n=8$} \label{fig:copy2}
+\label{Fig:memorycopy2}
+\end{subfigure}
+\caption{\label{Fig:memoryprogressionscopy}Memory progressions of element and vectorized copies}
+\end{figure}
+
+\newpage
+
+As the optimized code produces a different result than the element-wise copy,
+the compiler cannot just insert vector operations as it would make this specific invocation incorrect.
+LLVM deals with this problem by adding \textit{runtime pointer checks}\footnote{\url{https://llvm.org/docs/Vectorizers.html\#runtime-checks-of-pointers}}.
+
+An excerpt of the generated RV32IV assembly code which includes this check for our \texttt{copy} function is given in listing \ref{lst:runtimepointercheck}.
+In lines 3 and 4 the end address of the \texttt{src} (\texttt{a3}) and \texttt{dst} (\texttt{a4}) arrays are computed.
+Lines 5 and 6 determine whether there is overlap between them, by looking at the start and end addresses of both arrays.
+If we assume the array from example \ref{Fig:memorycopy2} starts at addresses 0,
+the overlap is detected because $2 < 3$ (the \texttt{dst} array begins before \texttt{src} ends)
+and $0 < 10$ (the \texttt{src} array begins before \texttt{dst} ends).
+Upon detecting overlap, the function immediately jumps to \texttt{.LBB0\_7}, after which it will perform the element-wise copy.
+Otherwise, the function does not jump and continues, utilizing the vector operations
+where possible.
+
+If the programmer annotates the \texttt{src} and \texttt{dst} pointer declarations
+with restrict, such runtime checks are omitted by the compiler.
+In fact, the only difference in the generated code
+when the restrict type qualifiers are present, is the omission of this specific code snippet (besides some renaming of labels).
+
+
+\begin{code}
+\begin{minted}[escapeinside=||,mathescape=true,linenos]{gas}
+    ...
+    slli    a3, a2, 2           # a3 := (n * 4) 
+    add     a4, a1, a3          # a4 := dst + a3
+    add     a3, a3, a0          # a3 := a3 + src
+    sltu    a3, a1, a3          # a3 := (a1 < a3) ? 1:0
+    sltu    a4, a0, a4          # a4 := (a0 < a4) ? 1:0
+    and     a3, a3, a4          # a3 := a3 & a4
+    li      a6, 0               # a6 := 0
+    bnez    a3, .LBB0_7         # (a3 != 0) ? goto .LBB0_7
+    ...
+\end{minted}
+\captionof{listing}{Runtime overlapping check in RV32IV assembly, emitted by Clang 14.0.0}
+\label{lst:runtimepointercheck}
+\end{code}
+
+% RISC-V rv32gc clang 14.0.0
+% -O3 -ffreestanding -fno-strict-aliasing -march=rv32gcv -target riscv32 -mllvm --riscv-v-vector-bits-min=256
+
+
+\section{ISO/IEC definition}\label{section:iso-definition}
+Section 6.7.3.1 of the ISO/IEC C11 standard \cite{ISO:2018:III} describes the ``formal definition" of restrict.
+As we indicated in the introductory text, this definition can be considered quite complicated and unclear
+with both implementors and users of the programming language having trouble interpreting its exact meaning.
+Several proposals for a new or updated definition \cite{johnsonclarifying2018, provmacdonald2022, defectr2macdonald2024, semanticsgustedt2024}
+even two decades after its original publication (the definition has remained unchanged since) further substantiate this claim.
+% This is further supported by recent attempts from the community to rephrase (parts of) the formal definition.
+% For example, MacDonald and Homer \cite{provmacdonald2022} propose a ``provenance-style specification"
+% in the style of N3005, which is a technical specification attempting to (re)define more subtle aspects of the C memory model
+% in which pointers to identical numerical addresses can be distinguished \cite{provmemgustedt2022}.
+% Even more recently, Gustedt \cite{semanticsgustedt2024} describes how the mixup of semantic concepts makes the formal definition almost 
+% impossible to comprehend and proposes a new definition.
+
+In this thesis, we stated that fixing the ``formal definition" of restrict in the standard or analyzing the proposals for 
+new definitions in natural language in detail are explicit non-goals.
+However, we still want the operational semantics we develop in this thesis to relate closely to the \textit{intended}
+semantics of restrict in the standard (especially for contexts in which its meaning is clear).
+Therefore, we will explain our interpretation without reciting the entire definition.
+This interpretation will be used in chapter \ref{chap:cink} to argue what the expected semantics of a program 
+utilizing restrict with respect to the standard should be.
+
+The standard definition starts by outlining the context of a restrict type qualifier by defining several variables.
+$D$ is a declaration of an ordinary identifier.
+$P$ is an object which can ``be designated" as a restrict qualified pointer to type $T$ through $D$.
+It is not explicitly defined what it means to be able to designate an object as a restrict qualified pointer through a declaration.
+We assume here that either some part of the type of $D$ has type \mintinline{c}{T* restrict}, or some part of a member type of 
+a composite type has type \mintinline{c}{T* restrict}.
+For example, the declaration $D1$ in \mintinline{c}{int* restrict *D1 = ...;} allows to designate such a restrict qualified object through \mintinline{c}{*D1 = ...;}
+and the declaration $D2$ in \mintinline{c}{struct s {int* restrict p;} D2;} allows to designate such an object through \mintinline{c}{D2.p = ...;}.
+Finally, $B$ denotes the block scope in which $D$ appears (which is \texttt{main} if $D$ has storage class extern or does not occur in a block).
+We refer to this block as the \textit{restrict block}.
+
+To demonstrate how these variables are constructed for a program, 
+consider the function \texttt{foo} below, whose associated function block scope is named \scope{foo}.
+The variables for this program are instantiated to
+$D$ = \mintinline{c}{int* restrict p} (\ie $p$ is the ordinary identifier),
+$P$ = $p$, $T = $ \mintinline{c}{int} and $B$ = \scope{foo}.
+
+\begin{code}
+\begin{minted}[escapeinside=||,mathescape=true,linenos]{c}
+// Scope $\scope{foo}$
+void foo(int* restrict p) {
+...
+}
+\end{minted}
+\end{code}
+
+Furthermore, $L$ is any lvalue which has $\&L$ ``based on" $P$ and $X$ is the object designated by $L$.
+The idea of the ``based on" definition was previously explained in the introduction.
+Basically, a pointer expression $E$ is based on $P$ if it depends directly on the value of $p$ or on another pointer expression which is based on $P$.
+We will use the phrase ``$L$ is \textit{derived from} from $P$" to refer to lvalues $L$ which have $\&L$ based on $P$. 
+
+The term \textit{lvalue} is used to refer to an expression which may occur at the left-hand side of the
+assignment operator and has an actual address in memory.
+% All other expressions are \textit{rvalue expression}s, and all lvalue expressions are also rvalue expressions.
+
+
+The official definition of ``based on'' in the standard is quite obscure.
+MacDonald \etall proposed a new definition for the first time in 2022 \cite{defectmacdonald2022},
+which was recently superseded by ``a more straightforward fix" \cite{defectr2macdonald2024}.
+
+Having set the context, the standard defines two situations which can lead to \textit{undefined behavior}
+(programs for which anything may happen):
+
+\begin{enumerate}
+    \item During execution of $B$, $L$ is used to access $X$ and $X$ is modified by any means.
+    Any modification of $X$ is considered to also modify $P$.
+    $T$ shall not be const-qualified.
+    All other lvalues used to access $X$ must have their address based on $P$, or the program has undefined behavior.
+    \item If $P$ is assigned the value of a pointer expression $E$ that is based on
+    another restricted pointer object associated with block $B2$, then either the execution of $B2$ shall begin
+    before the execution of $B$ or the execution of $B2$ shall end prior to the assignment.
+\end{enumerate}
+
+In this thesis, we focus on a semantics which is able to detect point $1$, \ie the dynamic semantics
+of memory accesses using lvalues based on a restrict qualified pointer.
+The quadruple $(D, P, X, B)$ refers to the previously defined variables and will
+be instantiated for specific programs later on in this thesis.
+Point $2$ is out of scope for this thesis and will be briefly addressed in chapter \ref{chap:conclusion} on future work.

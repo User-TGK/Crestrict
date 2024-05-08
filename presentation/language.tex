@@ -1,0 +1,56 @@
+% \begin{frame}
+% \frametitle{The language\footnote{A small language based on \cite{blazy2009mechanized}}}
+% \begin{figure}
+% \[%\def\arraystretch{1.1}
+% \begin{array}{lrl}
+% \multicolumn{3}{l}{\hspace{-5pt}\textbf{Types}} \\[4pt]
+% \textdom{st} \in \Simpletype                    & \bnfdef   & \Inttype \ | \ \Ptrtype  \ | \  \Arraytype \ | \ \Functiontype \ | \ \Voidtype  \\
+%     \tau_q \in \Typequalifier                   & \bnfdef   & \Noqualifier \ | \ \Restrictqualifier \ | \ \Globalrestrictqualifier \\
+%     \tau \in \Type                              & :=        & \Simpletype \times \Typequalifier       \\[4pt]
+% \multicolumn{3}{l}{\hspace{-5pt}\textbf{Expressions and statements}} \\[4pt]
+%     e \in \Expr                                 &   \bnfdef     & \Idvar \ | \ n \ | \ op_1  \ e \ | \ e_1 \ op_2 \ e_2 \ | \ \mathbin{*e} \ | \ \&e \ | \ ... \\
+%     s \in \Statement                            &   \bnfdef     & e_1 = e_2 \ | \ e_1 = e_2(e^*) \ | \ e(e^*) \ | \ s_1; s_2 \ | \ \mathsf{if}(e) \ s_1 \ \mathsf{else} \ s_2 \ | \\
+%                                                 &               & ...
+% \end{array}
+% \]
+% \end{figure}
+
+% \end{frame}
+
+% \begin{frame}
+% \frametitle{The language\footnote{A small language based on \cite{blazy2009mechanized}}}
+% \begin{figure}
+% \[%\def\arraystretch{1.1}
+% \begin{array}{lrl}
+% \multicolumn{3}{l}{\hspace{-5pt}\textbf{Types}} \\[4pt]
+% \textdom{st} \in \Simpletype                    & \bnfdef   & \Inttype \ | \ \Ptrtype  \ | \ \text{\soutthick{\Arraytype}} \ | \ \text{\soutthick{\Functiontype}} \ | \ \text{\soutthick{\Voidtype}}  \\
+%     \tau_q \in \Typequalifier                   & \bnfdef   & \Noqualifier \ | \ \Restrictqualifier \ | \ \text{\soutthick{\Globalrestrictqualifier}} \\
+%     \tau \in \Type                              & :=        & \Simpletype \times \Typequalifier       \\[4pt]
+% \multicolumn{3}{l}{\hspace{-5pt}\textbf{Expressions and statements}} \\[4pt]
+%     e \in \Expr                                 &   \bnfdef     & \Idvar \ | \ n \ | \ op_1  \ e \ | \ e_1 \ op_2 \ e_2 \ | \ \mathbin{*e} \ | \ \&e \ | \ ... \\
+%     s \in \Statement                            &   \bnfdef     & e_1 = e_2 \ | \ e_1 = e_2(e^*) \ | \ e(e^*) \ | \ s_1; s_2 \ | \ \mathsf{if}(e) \ s_1 \ \mathsf{else} \ s_2 \ | \\
+%                                                 &               & ...
+% \end{array}
+% \]
+% \end{figure}
+
+% \end{frame}
+
+\begin{frame}
+\frametitle{The language\footnote{A small language based on \cite{blazy2009mechanized}} (simplified)}
+\begin{figure}
+\[%\def\arraystretch{1.1}
+\begin{array}{lrl}
+\multicolumn{3}{l}{\hspace{-5pt}\textbf{Types}} \\[4pt]
+\textdom{st} \in \Simpletype                    & \bnfdef   & \Inttype \ | \ \mathsf{Ptr} \ \colorbox{blue!20}{$\tau$}  \\
+    \tau_q \in \Typequalifier                   & \bnfdef   & \Noqualifier \ | \ \colorbox{blue!20}{\Restrictqualifier} \\
+    \tau \in \Type                              & \bnfdef   & (\textdom{st}, \tau_q) %\Simpletype \times \Typequalifier       \\[4pt]
+% \multicolumn{3}{l}{\hspace{-5pt}\textbf{Expressions and statements}} \\[4pt]
+%     e \in \Expr                                 &   \bnfdef     & \Idvar \ | \ n \ | \ op_1  \ e \ | \ e_1 \ op_2 \ e_2 \ | \ \mathbin{*e} \ | \ \&e \ | \ ... \\
+%     s \in \Statement                            &   \bnfdef     & e_1 = e_2 \ | \ e_1 = e_2(e^*) \ | \ e(e^*) \ | \ s_1; s_2 \ | \ \mathsf{if}(e) \ s_1 \ \mathsf{else} \ s_2 \ | \\
+%                                                 &               & ...
+\end{array}
+\]
+\end{figure}
+
+\end{frame}

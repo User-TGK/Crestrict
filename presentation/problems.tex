@@ -1,0 +1,227 @@
+\begin{frame}[fragile]
+\frametitle{Returning restrict pointers (TMU)}
+
+\begin{minted}[escapeinside=||,mathescape=true]{c}
+int* as_mut_ptr(int* restrict v) {
+    return v;
+}
+\end{minted}
+
+\vspace*{-1cm}
+
+\begin{figure}[!h]
+\begin{minipage}[t]{.4\textwidth}
+
+\begin{minted}[escapeinside=||,mathescape=true]{c}
+int main() {
+    int a;
+
+    int* p = as_mut_ptr(&a);
+    int* q = as_mut_ptr(&a);
+
+    *p = 0;
+    |\colorbox{red!20}{*q = 0;}|
+}
+
+\end{minted}
+\end{minipage}%
+\begin{minipage}{.6\textwidth}
+\colorbox{red!20}{$\restricted{\set{(\Blockvar_{v2}, \scope{as\_mut\_ptr\_2})}} \joinsym$} \\
+\colorbox{red!20}{$\restricted{\set{(\Blockvar_{v1}, \scope{as\_mut\_ptr\_1})}} = \rsub$} \\
+
+\executionannotation
+{
+    \{$\Blockvar_a \mapsto 0$, \\
+        \ $\Blockvar_p \mapsto \ptr{(\Blockvar_a, \set{(\Blockvar_{v1}, \scope{as\_mut\_ptr\_1})})}$, \\
+        \ $\Blockvar_q \mapsto \ptr{(\Blockvar_a, \set{(\Blockvar_{v2}, \scope{as\_mut\_ptr\_2})})}$
+    \}
+    }
+{
+    \begin{tikzpicture}[stack/.style={rectangle split, rectangle split parts=#1, draw, anchor=center, text centered},
+        scope/.style={fill=gray!20, anchor=center}]
+    \node[stack=1, minimum width=4.0cm] (s) {
+        \nodepart{one} $\set{\Blockvar_a \mapsto \restricted{\set{(\Blockvar_{v1}, \scope{as\_mut\_ptr\_1})}}}$
+    };
+
+    \node[scope, left=5pt of s.one west]   {\scope{main}};
+    
+
+    \end{tikzpicture}
+}
+\end{minipage}
+\end{figure}
+
+\end{frame}
+
+
+
+\begin{frame}[fragile]
+\frametitle{Array of restrict pointers (TLU)}
+\begin{minipage}{.45\textwidth}
+\begin{minted}[escapeinside=||,mathescape=true]{c}
+// Scope $\scope{main}$
+int main() {
+    int x;
+    int* restrict a[2] = {&x, &x};
+
+    *(a[0]) = 10;
+    |\colorbox{red!20}{*(a[1]) = 11;}|
+}
+\end{minted}
+\end{minipage}%
+\begin{minipage}{.55\textwidth}
+\colorbox{red!20}{$\restricted{\set{(\Blockvar_a, \scope{main})}} \joinsym \restricted{\set{(\Blockvar_a, \scope{main})}}$} \\
+\colorbox{red!20}{$= \restricted{\set{(\Blockvar_a, \scope{main})}}$} \\
+
+\executionannotation
+{
+    \{$\Blockvar_x \mapsto 10$, \\
+      \ $\Blockvar_a \mapsto \{\ptr{(\Blockvar_x, \set{(\Blockvar_a, \scope{main})})}$,\\ 
+      \ \qquad\quad $\ptr{(\Blockvar_x, \set{(\Blockvar_a, \scope{main})})}$ \}\}  
+}
+{
+    \begin{tikzpicture}[stack/.style={rectangle split, rectangle split parts=#1, draw, anchor=center, text centered},
+        scope/.style={fill=gray!20, anchor=center}]
+    \node[stack=1, minimum width=4.0cm] (s) {
+        \nodepart{one} $\set{\Blockvar_x \mapsto \restricted{\set{(\Blockvar_a, \scope{main})}}}$
+    };
+
+    \node[scope, left=5pt of s.one west]   {\scope{main}};
+    \end{tikzpicture}
+}
+\end{minipage}
+\end{frame}
+
+
+\begin{frame}[fragile]
+\frametitle{Semantic preservation under inlining (TLU)}
+\begin{minted}[escapeinside=||,mathescape=true]{c}
+// Scope $\scope{foo}$
+void foo(int* q) {
+    *q = 0;
+    |\colorbox{red!20}{while(1) \{\}}|
+    // Never terminates
+}
+\end{minted}
+
+
+\begin{minipage}{.4\textwidth}
+\begin{minted}[escapeinside=||,mathescape=true]{c}
+// Scope $\scope{main}$
+int main() {
+    int x = 5;
+    int* restrict p = &x;
+    *p;
+    foo(&x);
+}
+\end{minted}
+\end{minipage}%
+\begin{minipage}{.6\textwidth}
+\executionannotation
+{
+    \{$\Blockvar_x \mapsto 5$, \\
+     \ $\Blockvar_p \mapsto \ptr{(\Blockvar_x, \set{(\Blockvar_p, \scope{main})})}$, \\
+     \ $\Blockvar_q \mapsto \ptr{(\Blockvar_x, \emptyset)}$
+    \}
+}
+{
+    \begin{tikzpicture}[stack/.style={rectangle split, rectangle split parts=#1, draw, anchor=center, text centered},
+        scope/.style={fill=gray!20, anchor=center}]
+    \node[stack=2, minimum width=4.0cm] (s) {
+    \nodepart{one} \{$\Blockvar_x \mapsto \restricted{\emptyset}$\}
+    \nodepart{two} \{$\Blockvar_x \mapsto \onlyread{\set{(\Blockvar_p, \scope{main})}}$\}
+    };
+    \node[scope, left=5pt of s.one west]   {\scope{h}};
+    \node[scope, left=5pt of s.two west]   {\scope{main}};
+    \end{tikzpicture}
+}
+\end{minipage}
+
+\end{frame}
+
+
+\begin{frame}[fragile]
+\frametitle{Semantic preservation under inlining (TLU)}
+\begin{minipage}{.4\textwidth}
+\begin{minted}[escapeinside=||,mathescape=true]{c}
+// foo is inlined into main
+// Scope $\scope{main}$
+int main() {
+    int x = 5;
+    int* restrict p = &x;
+    *p;
+    int* q = &x;
+    |\colorbox{red!20}{*q = 0;}|
+    while (1) {}
+}
+\end{minted}
+\end{minipage}%
+\begin{minipage}{.6\textwidth}
+\colorbox{red!20}{$\restricted{\emptyset} \joinsym \onlyread{\set{(\Blockvar_p, \scope{main})}} = \rsub$} \\
+
+\executionannotation
+{
+    \{$\Blockvar_x \mapsto 5$, \\
+     \ $\Blockvar_p \mapsto \ptr{(\Blockvar_x, \set{(\Blockvar_p, \scope{main})})}$, \\
+     \ $\Blockvar_q \mapsto \ptr{(\Blockvar_x, \emptyset)}$
+    \}
+}
+{
+    \begin{tikzpicture}[stack/.style={rectangle split, rectangle split parts=#1, draw, anchor=center, text centered},
+        scope/.style={fill=gray!20, anchor=center}]
+    \node[stack=1, minimum width=4.0cm] (s) {
+        \nodepart{one} $\set{\Blockvar_x \mapsto \onlyread{\set{(\Blockvar_p, \scope{main})}}}$
+    };
+
+    \node[scope, left=5pt of s.one west]   {\scope{main}};
+    \end{tikzpicture}
+}
+\end{minipage}
+
+\end{frame}
+
+
+\begin{frame}[fragile]
+\frametitle{Call to free (TLU)}
+\begin{minipage}{.5\textwidth}
+\begin{minted}[escapeinside=||,mathescape=true]{c}
+// Scope $\scope{bar}$
+void bar(int* s) {
+    free(s);
+}
+// Scope $\scope{foo}$
+void foo(int* restrict q, int* r) {
+    |\colorbox{red!20}{*q = 5;}|
+    bar(r);
+}
+// Scope $\scope{main}$
+int main() {
+    // Stored at $\Blockvar_v$
+    int* p = malloc(sizeof(int));
+    foo(p, p);
+}
+\end{minted}
+\end{minipage}%
+\begin{minipage}{.5\textwidth}
+\executionannotation
+{
+\{$\Blockvar_v \mapsto 5$, \\
+   \ $\Blockvar_p \mapsto \ptr{(\Blockvar_v, \emptyset)}$, \\
+    \ $\Blockvar_q \mapsto \ptr{(\Blockvar_v, \set{(\Blockvar_q, \scope{foo})})}$, \\
+    \ $\Blockvar_r \mapsto \ptr{(\Blockvar_v, \emptyset)}$ \}
+}
+{
+    \begin{tikzpicture}[stack/.style={rectangle split, rectangle split parts=#1, draw, anchor=center, text centered},
+        scope/.style={fill=gray!20, anchor=center}]
+    \node[stack=2, minimum width=4.0cm] (s) {
+    \nodepart{one} $\set{\Blockvar_v \mapsto \restricted{(\Blockvar_q, \scope{foo})}}$
+    \nodepart{two} $\emptyset$
+    };
+    \node[scope, left=5pt of s.one west]   {\scope{h}};
+    \node[scope, left=5pt of s.two west]   {\scope{main}};
+    \end{tikzpicture}   
+}
+\end{minipage}
+
+\end{frame}
+

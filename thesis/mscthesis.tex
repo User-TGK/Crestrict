@@ -1,0 +1,278 @@
+\documentclass[11pt,a4paper,table]{report}
+\usepackage[a4paper,width=150mm,top=25mm,bottom=25mm]{geometry} % showframe
+
+\usepackage{amsfonts}
+\usepackage{amssymb}
+
+\usepackage{arydshln}
+\usepackage[tbtags]{amsmath}
+\usepackage{array}
+
+\usepackage{bm}
+\usepackage{bussproofs}
+\usepackage{booktabs}
+
+\usepackage[most]{tcolorbox}
+
+\usepackage{empheq}
+
+\usepackage{hyphenat}
+
+\usepackage[justification=centering]{caption}
+\usepackage{fixltx2e}
+\usepackage{float}
+\usepackage{formal-grammar}
+
+\usepackage{graphicx}
+
+\PassOptionsToPackage{hyphens}{url}
+\usepackage[hidelinks]{hyperref}
+
+\usepackage{listings}
+\usepackage{longtable}
+
+\usepackage{placeins}
+
+\usepackage[newfloat]{minted}
+\usepackage{makecell}
+\usepackage{mathpartir}
+\usepackage{mathtools}
+\usepackage{marvosym}
+\usepackage{multirow}
+
+\usepackage{stackengine}
+\usepackage{stmaryrd} % Rbag symbol
+\usepackage{subcaption}
+
+\usepackage{tabularx}
+
+% \usepackage[dvipsnames]{xcolor}
+\usepackage{tikz}
+\usetikzlibrary{calc, decorations.pathmorphing, decorations.pathreplacing, shapes.arrows,shapes.multipart,chains,patterns, quotes,tikzmark, trees, positioning}
+
+\usepackage{rutitlepage}
+
+\usepackage{url}
+\usepackage{varwidth}
+\usepackage{xcolor}
+\usepackage{xspace}
+
+% .sty
+\usepackage{c-restrict-language}
+
+% Tikz related styles
+
+\tikzset{restrict-node/.style={draw,pattern=north west lines,pattern color=black!20,line width=0.5pt}}
+
+\setlength{\fboxsep}{0pt}
+
+% Completely prevent breaking of footnotes
+\interfootnotelinepenalty=10000
+
+\newcolumntype{s}{>{\hsize=0.5\hsize}X}
+
+
+\newenvironment{localsize}[1]
+{%
+  \clearpage
+  \let\orignewcommand\newcommand
+  \let\newcommand\renewcommand
+  \makeatletter
+  \input{bk#1.clo}%
+  \makeatother
+  \let\newcommand\orignewcommand
+}
+
+\newenvironment{functioncode}[1]
+{
+    \footnotesize
+    \makebox[\textwidth][c]{
+      $\begin{array}{r@{\:}c@{\:}l}
+      #1
+      \end{array}$
+    }    
+}
+
+% \DeclareMathSizes{10}{8}{6}{4}
+\makeatletter
+\def\AxiomC@i{\hskip \z@}
+\def\UnaryInfC@i{\hskip \z@}
+\makeatother
+
+\def\midtilde@normaltilde{\texttildelow}
+
+\def\cink{C-in-$\mathbb{K}$}
+
+\newcommand{\twodots}{\mathinner {\ldotp \ldotp}}
+
+\newcommand{\setbuild}[2]{\ensuremath{\set{{#1}\mid{#2}}}}
+
+\newcommand{\ruletarget}[1]{\hyperlink{#1}{\textsc{#1}}}
+
+\def\eg{\emph{e.g.}\@\xspace}
+\def\ie{\emph{i.e.}\@\xspace}
+\def\etall{\emph{et al.}\@\xspace}
+\def\dr{dr.\@\xspace}
+\def\drcap{Dr.\@\xspace}
+
+% #1 = rule name
+% #2 = mathprooftree
+\newcommand{\semanticrule}[2]{%
+{
+\centering
+\def\defaultHypSeparation{\hskip 1pt}
+\footnotesize
+% \small\scshape
+% \small\itshape
+\arraycolsep=2.5pt
+\begin{minipage}[t]{\textwidth}
+\vspace*{-\baselineskip} 
+\centering
+\setlength{\abovedisplayskip}{0pt}
+  \begin{align*}
+  \rlap{\hypertarget{#1}{\textsc{#1}}}\phantom{#2} \\[-5pt]
+  #2
+  \end{align*}
+\end{minipage}
+}
+}
+
+\newcommand{\twosemanticrules}[4]{
+  \setlength{\abovedisplayskip}{0pt}
+  \begin{gather}
+  \begin{minipage}[t]{0.5\textwidth}
+  \vspace{-\baselineskip}
+  \semanticrule{#1}{#2}
+  \end{minipage}
+  \begin{minipage}[t]{0.5\textwidth}
+  \vspace{-\baselineskip} 
+  \semanticrule{#3}{#4}
+  \end{minipage}
+  \end{gather}
+}
+
+\newcommand{\threesemanticrules}[6]{
+  \setlength{\abovedisplayskip}{0pt}
+  \begin{gather}
+  \begin{minipage}[t]{0.32\textwidth}
+  % \vspace*{-\baselineskip} 
+  \semanticrule{#1}{#2}
+  \end{minipage}%
+  \begin{minipage}[t]{0.32\textwidth}
+  % \vspace*{-\baselineskip}
+  \semanticrule{#3}{#4}
+  \end{minipage}%
+  \begin{minipage}[t]{0.32\textwidth}
+  % \vspace*{-\baselineskip}
+  \semanticrule{#5}{#6}
+  \end{minipage}
+  \end{gather}
+}
+
+\newcommand{\emptyaxiom}[0]{\phantom{$G, \Statevar, \Downarrow$}}
+
+\newcommand{\highlightchangem}[1]{\hspace{-\fboxsep}\text{\colorbox{maroon!10}{$#1$}}}
+
+\newcommand{\redm}[1]{
+    \tcbox[on line,size=tight, 
+           colframe=white,colback=maroon!10,  
+           highlight math style={enhanced}]{\ensuremath{#1}}}
+
+\newcommand{\smallbm}[1]{\scalebox{0.7}{\ensuremath{\bm{#1}}}}
+
+\newcommand{\textoverline}[1]{$\overline{\mbox{#1}}$}
+
+\newcommand{\mmintinlinec}[1]{\text{\mintinline{c}{#1}}}
+
+\newcommand\mydots{\ifmmode\ldots\else\makebox[1em][c]{.\hfil.\hfil.}\fi}
+
+% New environments
+% From https://latex.org/forum/viewtopic.php?t=5464
+\makeatletter
+\newcommand\ackname{Acknowledgements}
+\if@titlepage
+  \newenvironment{acknowledgements}{%
+      \titlepage
+      \null\vfil
+      \@beginparpenalty\@lowpenalty
+      \begin{center}%
+        \bfseries \ackname
+        \@endparpenalty\@M
+      \end{center}}%
+     {\par\vfil\null\endtitlepage}
+\else
+  \newenvironment{acknowledgements}{%
+      \if@twocolumn
+        \section*{\abstractname}%
+      \else
+        \small
+        \begin{center}%
+          {\bfseries \ackname\vspace{-.5em}\vspace{\z@}}%
+        \end{center}%
+        \quotation
+      \fi}
+      {\if@twocolumn\else\endquotation\fi}
+\fi
+\makeatother
+
+\newenvironment{mathprooftree}
+  {\varwidth{.9\textwidth}\centering\leavevmode}
+  {\DisplayProof\endvarwidth}
+
+\newenvironment{code}{\captionsetup{type=listing}}{}
+\SetupFloatingEnvironment{listing}{name=Listing}
+
+\mathchardef\mhyphen="2D
+
+\setminted{fontsize=\footnotesize}
+\setmintedinline{fontsize=\normalsize}
+
+
+\begin{document}
+
+% Hyphenations for irregular words such as names
+\hyphenation{Comp-Cert}
+
+% .tex includes
+\include{risc-v.tex}
+
+% Title page
+
+\maketitleru[
+  layout=twentytwo,
+	authors={Ties Klappe\\\small{s1030293}},
+	date={\today},
+	others={%
+		{Supervisor:}{\dr Robbert Krebbers},
+		{Second assessor:}{\dr Freek Wiedijk}},
+	course={MSc Thesis Computing Science\\Faculty of Science},
+	title={An operational semantics for the C99 restrict type qualifier},
+]
+
+\input{abstract}
+
+\input{acknowledgements}
+
+\tableofcontents
+
+\input{introduction}
+
+\input{examples}
+
+\input{c-in-k}
+
+\input{crestrict}
+
+\input{language}
+
+\input{evaluation}
+
+\input{relatedwork}
+
+\input{conclusion}
+
+% Using bibtex for reference management
+\bibliographystyle{acm}
+\bibliography{bibliography}
+
+\end{document}

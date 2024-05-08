@@ -1,0 +1,210 @@
+\ProvidesPackage{c-restrict-language}
+
+
+\newcommand{\setcomp}[2]{
+    \left\{
+    \begin{array}{ll}
+        #1 & #2
+    \end{array}
+    \right\}
+}
+
+\newcommand{\bnfdef}{{\bf ::=}}
+\DeclarePairedDelimiter\set\{\}
+
+\definecolor{maroon}{cmyk}{0,0.87,0.68,0.32}
+\newcommand*\highlightbox[1]{%
+    \colorbox{maroon!10}{\hspace{1em}#1\hspace{1em}}}
+
+% Fonts
+\newcommand{\textdom}[1]{\textit{#1}}
+\newcommand{\mathconstr}[1]{\ensuremath{\mathsf{#1}}}
+\newcommand{\textcode}[1]{\ensuremath{\mathtt{#1}}}
+
+% Judgments
+\newcommand{\lval}{\Downarrow_\mathsf{L}}
+\newcommand{\rval}{\Downarrow_\mathsf{R}}
+
+% Values
+\newcommand{\vint}[1]{\ensuremath{\mathsf{I32} \ #1}}
+\newcommand{\ptr}[1]{\ensuremath{\mathsf{Ptr} \ #1}}
+\newcommand{\vundef}[0]{\ensuremath{\mathsf{Undef}}}
+
+\newcommand{\valuesvar}[0]{\ensuremath{\textdom{vs}}}
+
+% Outcomes
+\newcommand{\onormal}[0]    {\ensuremath{\mathsf{Normal}}}
+\newcommand{\ocontinue}[0]  {\ensuremath{\mathsf{Continue}}}
+\newcommand{\obreak}[0]     {\ensuremath{\mathsf{Break}}}
+\newcommand{\oreturn}[0]    {\ensuremath{\mathsf{Return}}}
+\newcommand{\oreturnv}[1]   {\ensuremath{\mathsf{Return} \ #1}}
+
+
+% Judgmentparameter
+\newcommand{\GEJudgment}[0] {\ensuremath{\Globalsvar, \Envvar \vdash}}
+
+% Types
+\newcommand{\irp}[0]{\ensuremath{\mathsf{IRP}}} 
+\newcommand{\irprp}[0]{\ensuremath{\mathsf{IRPRP}}} 
+
+\newcommand{\true}[0]{\ensuremath{\mathtt{true}}}
+\newcommand{\false}[0]{\ensuremath{\mathtt{false}}}
+
+\newcommand{\Optiontype}[1]{\ensuremath{\textdom{Opt}(#1)}}
+
+\newcommand{\Inttype}[0]{\ensuremath{\mathsf{I32}}}
+\newcommand{\Ptrtype}[0]{\ensuremath{\mathsf{Ptr \ \tau}}}
+\newcommand{\Arraytype}[0]{\ensuremath{\mathsf{Array} \ \tau \ n}}
+\newcommand{\Functiontype}[0]{\ensuremath{\mathsf{Function} \ \tau \ \tau^*}}
+\newcommand{\Voidtype}[0]{\ensuremath{\mathsf{Void}}}
+
+\newcommand{\Intdomain}[0]{\ensuremath{\mathbb{Z}}}
+\newcommand{\Booldomain}[0]{\ensuremath{\mathbb{B}}}
+
+
+% Auxiliary functions
+\newcommand{\checkrestrict}[2]{$\mathtt{check\_restrict}(R_1, #1, #2)$}
+\newcommand{\getrestrictscope}[2]{\ensuremath{\mathtt{get\_restrict\_scope} \ #1 \ #2}}
+\newcommand{\isarray}[1]{\ensuremath{\mathtt{is\_array}(#1)}}
+\newcommand{\isrestrict}[1]{\ensuremath{\mathtt{is\_restrict} \ \typeof{#1}}}
+\newcommand{\stripprov}[1]{\ensuremath{\mathtt{strip\_prov}(#1)}}
+\newcommand{\typeof}[1]{\ensuremath{(\textcode{type} \ #1)}}
+\newcommand{\isglobal}[1]{\ensuremath{\mathtt{is\_global(\typeof{#1})}}}
+
+\newcommand{\filterbases}[0]{\ensuremath{\textcode{filter\_bases}}}
+\newcommand{\filterbasesrec}[0]{\ensuremath{\textcode{filter\_bases'}}}
+
+\newcommand{\filterinactive}[0]{\ensuremath{\textcode{filter\_inactive}}}
+
+\newcommand{\removeinactivebases}[0]{\ensuremath{\mathtt{remove\_inactive\_bases}}}
+\newcommand{\removeinactivebasesvar}[0]{\ensuremath{\mathcal{F}}}
+
+\newcommand{\dom}[1]{\mathtt{dom}(#1)}
+
+\newcommand{\errbind}[0]{\textsf{?}}
+
+% Notations
+\newcommand{\Set}[1]{\textdom{Set}(#1)}
+\newcommand{\List}[1]{\textdom{List}(#1)}
+
+\newcommand{\Offset}[0]{\textdom{Offset}}
+\newcommand{\Block}[0]{\textdom{Block}}
+\newcommand{\Blockvar}[0]{\textdom{b}}
+\newcommand{\Memblock}[0]{\textdom{MemBlock}}
+\newcommand{\Memblockvar}[0]{\textdom{mb}}
+\newcommand{\Scopeid}[0]{\textdom{ScopeId}}
+\newcommand{\Idvar}[0]{\textdom{id}}
+\newcommand{\Id}[0]{\textdom{Id}}
+\newcommand{\Expr}[0]{\textdom{Expr}}
+\newcommand{\Statement}[0]{\textdom{Statement}}
+\newcommand{\Scopeidvar}[0]{\textdom{si}}
+\newcommand{\Simpleloc}[0]{\textdom{SimpleLoc}}
+\newcommand{\Simplelocvar}[0]{\textdom{sl}}
+\newcommand{\Simplebase}[0]{\textdom{SimpleBase}}
+\newcommand{\Simplebasevar}[0]{\textdom{sba}}
+\newcommand{\Base}[0]{\textdom{Base}}
+\newcommand{\Basevar}[0]{\textdom{ba}}
+\newcommand{\Bases}[0]{\textdom{Bases}}
+\newcommand{\Basesvar}[0]{\textdom{bas}}
+\newcommand{\Basesfam}[0]{\textdom{BasesFam}}
+\newcommand{\Basesfamvar}[0]{\textdom{F}\textsubscript{\Basesvar}}
+\newcommand{\Simplebases}[0]{\textdom{SimpleBases}}
+\newcommand{\Simplebasesvar}[0]{\textdom{sbas}}
+\newcommand{\Simplebasesfam}[0]{\textdom{SimpleBasesFam}}
+\newcommand{\Loc}[0]{\textdom{Loc}}
+\newcommand{\Locvar}[0]{\textdom{l}}
+\newcommand{\Restrictstate}[0]{\textdom{RestrictState}}
+\newcommand{\Restrictstatevar}[0]{\textdom{rs}}
+\newcommand{\Restrictmap}[0]{\textdom{RestrictMap}}
+\newcommand{\Restrictmapvar}[0]{\textdom{rm}}
+\newcommand{\Restrictmapvarnamed}[1]{\textdom{rm}_\mathtt{#1}}
+\newcommand{\Restrictstack}[0]{\textdom{RestrictStack}}
+\newcommand{\Restrictstackvar}[0]{\textdom{R}}
+\newcommand{\Scopemap}[0]{\textdom{ScopeMap}}
+\newcommand{\Scopemapvar}[0]{\textdom{S}}
+\newcommand{\Val}[0]{\textdom{Val}}
+\newcommand{\Valvar}[0]{\textdom{v}}
+\newcommand{\Outcome}[0]{\textdom{Outcome}}
+\newcommand{\Outcomevar}[0]{\textdom{out}}
+
+\newcommand{\Outcomeupdate}[2]{\ensuremath{#1 \leadsto^\textdom{loop} #2}}
+
+\newcommand{\Globals}[0]{\textdom{Globals}}
+\newcommand{\Globalsvar}[0]{\textdom{G}}
+\newcommand{\Env}[0]{\textdom{Env}}
+\newcommand{\Envvar}[0]{\textdom{E}}
+\newcommand{\Mem}[0]{\textdom{Mem}}
+\newcommand{\Memvar}[0]{\textdom{M}}
+\newcommand{\Type}[0]{\textdom{Type}}
+\newcommand{\Simpletype}[0]{\textdom{SimpleType}}
+\newcommand{\Typequalifier}[0]{\textdom{TypeQualifier}}
+\newcommand{\Noqualifier}[0]{\ensuremath{\mathsf{NoRestrict}}}
+\newcommand{\Restrictqualifier}[0]{\ensuremath{\mathsf{Restrict}}}
+\newcommand{\Globalrestrictqualifier}[0]{\ensuremath{\mathsf{GlobalRestrict}}}
+\newcommand{\Dclvar}[0]{\textdom{dcl}}
+\newcommand{\Declarations}[0]{\textdom{Declarations}}
+\newcommand{\Fundclvar}[0]{\textdom{fun\_dcl}}
+\newcommand{\Fundeclarations}[0]{\textdom{FunDeclarations}}
+\newcommand{\Fundef}[0]{\textdom{FunDef}}
+\newcommand{\Hivar}[0]{\textdom{hi}}
+\newcommand{\State}[0]{\textdom{State}}
+\newcommand{\Statevar}[0]{\ensuremath{\sigma}}
+
+\newcommand{\Efunvar}[0]{\textdom{e\textsubscript{fun}}}
+\newcommand{\Eargvar}[0]{\textdom{e\textsubscript{args}}}
+\newcommand{\Vargvar}[0]{\textdom{\Valvar\textsubscript{args}}}
+\newcommand{\Fundefvar}[0]{\textdom{Fd}}
+
+\newcommand{\Globalsmemberenv}[0]{\ensuremath{\mathsf{env}}}
+\newcommand{\Globalsmemberdefs}[0]{\ensuremath{\mathsf{defs}}}
+
+\newcommand{\Memblockmemberhi}[0]{\ensuremath{\mathsf{hi}}}
+\newcommand{\Memblockmemberdyn}[0]{\ensuremath{\mathsf{dyn}}}
+\newcommand{\Memblockmembercontent}[0]{\ensuremath{\mathsf{contents}}}
+
+\newcommand{\Memstatemember}[0]{\ensuremath{\mathsf{mem}}}
+\newcommand{\Restrictstatemember}[0]{\ensuremath{\mathsf{rstack}}}
+\newcommand{\Scopesstatemember}[0]{\ensuremath{\mathsf{scopes}}}
+
+\newcommand{\simple}[1]{\ensuremath{\textcode{simple(#1)}}}
+
+\newcommand{\pseudoif}[0]{\textbf{if }}
+\newcommand{\pseudothen}[0]{\textbf{then }}
+\newcommand{\pseudoelse}[0]{\textbf{else }}
+\newcommand{\pseudolet}[0]{\textbf{let }}
+\newcommand{\pseudowith}[0]{\textbf{ with }}
+\newcommand{\pseudowhere}[0]{\textbf{where }}
+\newcommand{\pseudoin}[0]{\textbf{in }}
+\newcommand{\nonesym}[0]{\ensuremath{\epsilon}}
+
+\newcommand{\validsym}[0]{\ensuremath{\vDash}}
+
+% C-in-K symbols/notations
+
+% Restrict states
+\newcommand{\restricted}[1]{\ensuremath{\restrictedn \ #1}}
+\newcommand{\restrictedn}[0]{\ensuremath{\mathsf{Restricted}}}
+\newcommand{\onlyread}[1]{\ensuremath{\mathsf{OnlyRead} \ #1}}
+\newcommand{\unrestricted}[0]{\ensuremath{\mathsf{Unrestricted}}}
+\newcommand{\init}[0]{\ensuremath{\mathsf{Initializer}}}
+\newcommand{\rsub}[0]{\text{\Biohazard}}
+
+\newcommand{\unresabbr}[0]{\mathconstr{Unres}}
+\newcommand{\resabbr}[1]{\mathconstr{Res_{#1}}}
+\newcommand{\orabbr}[1]{\mathconstr{Or_{#1}}}
+
+\newcommand{\scope}[1]{\ensuremath{\mathtt{si}_\mathtt{#1}}}
+
+
+% C-in-K join
+\newcommand{\joinsym}[0]{\ensuremath{\mathrel{\sqcup}}}
+\newcommand{\join}[2]{(#1 \joinsym \ #2)}
+\newcommand{\joinload}[2]{\join{#1}{\onlyread{#2}}}
+\newcommand{\joinstore}[2]{\join{#1}{\restricted{#2}}}
+
+% C-in-K restrict stack events
+\newcommand{\ralloc}[1]{\xrightarrow[]{\textrm{ralloc}(#1)}}
+\newcommand{\rload}[1]{\xrightarrow[]{\textrm{rload}(#1)}}
+\newcommand{\rmergerestricts}[1]{\xrightarrow[]{\textrm{rmerge\_restricts(#1)}}}
+\newcommand{\rnew}[0]{\xrightarrow[]{\textrm{rnew}()}}
+\newcommand{\rstore}[1]{\xrightarrow[]{\textrm{rstore}(#1)}}

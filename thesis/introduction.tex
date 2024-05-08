@@ -1,0 +1,206 @@
+\chapter{Introduction}\label{chap:introduction}
+Despite being over five decades old C remains a widely used general purpose programming language,
+recently ranking fourth in the IEEE Spectrum 2023 index \cite{ieee2023} and second in the TIOBE January 2024 index \cite{tiobe2024}.
+An important reason for this is \textit{performance}: the language provides fine-grained control over memory and other hardware, which makes it especially suitable
+for the development of system software.
+
+This control comes with responsibilities because a compiler does not ensure
+that a program which successfully compiles also complies with all the obligations imposed by the ISO/IEC standard.
+A program which violates these obligations is said to have \textit{undefined behavior} \cite[3.4.3]{ISO:2018:III},
+``for which the International Standard imposes no requirements'', \ie a compiler may do \textit{anything} for such a program.
+Undefined behavior (UB) effectively serves as a \textit{contract} between the programmer and the compiler.
+The programmer is responsible for ensuring a program is free of undefined behavior, \eg by intuitive reasoning
+or a static analysis/verification tool.
+The compiler may in turn assume a program does not contain undefined behavior, which allows it to generate more efficient code
+because it has to perform fewer checks.
+For example, dereferencing out-of-bounds array pointers is considered undefined behavior, hence the
+compiler does not insert bound checking instructions.
+
+If undefined behavior leads to a run-time error, \eg a termination signal from the Linux Kernel such as SIGSEGV, this can be considered 
+a good thing as it could be detected during testing.
+A more tricky situation arises when a program is seemingly running correctly, but produces an ``incorrect'' result
+due to a bug inducing undefined behavior.
+Wang \etall \cite{wang2012undefined} find that such bugs are ``tricky to identify, hard to detect and understand, leading to programmers brushing them off incorrectly as GCC bugs''.
+
+One specific feature of C with a subtle semantics which may induce undefined behavior is the \textit{restrict} type qualifier,
+first introduced in the ISO/IEC C99 standard~\cite[6.7.3.1]{ISO:2018:III}.
+This type qualifier can only be applied to pointer types.
+The intended use is for a programmer to hint a compiler that only the restrict pointer will be used to access the
+object it points to.
+This allows a compiler to assume that under certain conditions specific pointers do not \textit{alias}, \ie they point to different objects.
+This information is used by the compiler to justify program optimizations.
+% By using restrict, the programmer \textit{promises} to the compiler that the object pointed to by the qualified pointer will not be accessed
+% by pointers ``not based" on said pointer, if the object is modified within that scope.
+% Because the memory accesses performed by a program determine whether the usage of restrict is correct or leads to undefined behavior
+% its semantics are \textit{dynamic}, \ie the actual execution of the program determines whether it is well-defined or not
+% and a compiler cannot statically check this.
+
+Consider the function \textcode{foo} on page \pageref{lst:typical-optimization-permitted-by-restrict} for a small example of an optimization permitted by restrict.
+This function takes two restrict qualified integer pointers $p$ and $q$ as arguments,
+consecutively stores 10 via $p$ and 11 via $q$, and returns the integer value $p$ points to.
+Because restrict allows the compiler to assume that $p$ and $q$ do not alias in the context
+of \textcode{foo}, it knows that the store via $q$ could not have modified the object $p$ points to.
+This means that at line \ref{optimization-candidate}, the object where $p$ points to must still contain the value $10$. 
+When compiling with optimization flag -O3, both GCC and Clang optimize line \ref{optimization-candidate} to simply return 10 instead of loading from $p$ due to this information.
+This optimization saves only a single memory load, but some more interesting examples will be presented in chapter \ref{chapter:examples}. 
+
+\begin{code}
+\begin{minted}[escapeinside=||,mathescape=true,linenos,texcomments]{c}
+int foo(int* restrict p, int* restrict q)
+{   
+    *p = 10;
+    *q = 11;
+    return *p; // Desired optimization: replace with $\texttt{return 10;}$ $\label{optimization-candidate}$
+}
+\end{minted}
+% \captionof{listing}{A typical optimization permitted by restrict}
+\label{lst:typical-optimization-permitted-by-restrict}
+\end{code}
+
+The conditions under which a compiler may assume specific pointers do not alias and whether a program is well-defined regard the actual \textit{usage} of a restrict pointer.
+For a well-defined program, qualifying a pointer with restrict has the following (simplified) meaning:
+\textbf{if} a pointer expression ``based on'' the restrict qualified pointer is used to \textit{access} the object it points to
+\textbf{and} that object is also \textit{modified} in some way, \textbf{then} all accesses of that object must happen
+via pointer expressions based on the restrict qualified object.
+A pointer expression is said to be \textit{based on} a restrict qualified pointer if it depends on its value. 
+For example, in the example program above the pointer expression $p$ is based on $p$ and the pointer expression $q$ is based on $q$.
+The use of restrict is a \textit{promise} by the programmer and not checked by the compiler.
+If the requirements are violated, for example if $p$ and $q$ would alias in the example program above, the program has undefined behavior.
+
+
+\paragraph{Problem statement} \leavevmode\\
+The simplified definition we described above is already quite complex, but the complete specification of restrict in the standard is even more tricky to say the least.
+The text is heavily technical and suffers both from the imprecision of natural language and lack of clarity on the semantics in
+specific contexts, \eg the meaning of nested restrict pointers.
+
+Recently, several proposals for a new definition in the standard have been submitted.
+Gustedt \cite{semanticsgustedt2024} gives a list of problems with the specification and points out that due to
+``a delicate mix up of semantic concepts the semantics of restrict is almost impossible to comprehend from the specification".
+MacDonald \etall \cite{provmacdonald2022, defectr2macdonald2024} identify a problem with the definition of ``based on''
+which prohibits certain programs from being optimized.
+
+The subtleties of the semantics are further substantiated by the limited amount of optimizations performed by compilers.
+In LLVM, which serves as the compiler backend for \eg Clang, restrict is only supported on function arguments and therefore misses opportunities for optimizations.
+An ongoing effort for a more complete restrict implementation, including but not limited to restrict qualified struct members, was started in 2019 under LLVM-dev RFC 135672 \cite{rfcdobbelaere2019}.
+GCC maintains a ``meta-bug" to track issues related to restrict~\cite{gccbugzillabiener2011}.
+Most of the open issues are about missed optimizations, suggesting that GCC also ignores restrict in several places.
+In GCC 7.3.0 a bug was found which led to an incorrect optimization due to restrict \cite{johnsonclarifying2018}
+and was later resolved.
+
+Overall, the problem is that the standard fails to adequately describe the semantics of restrict while correct usage is crucial both
+for avoiding undefined behavior and promoting code optimizations.
+
+\paragraph{Approach} \leavevmode\\
+A well-established technique which rigorously describes what programs are well-defined and what program constructs induce undefined behavior
+is a \textit{formal semantics}.
+There exists a vast landscape of formal semantics for C.
+Already in 1998, Norrish formalized a large fragment of C89 in the HOL4 proof assistant \cite{norrish1998c}.
+Several years later Leroy~\etall created a large formalization in the Coq proof assistant for their verified CompCert compiler \cite{leroy2006formal}.
+They prove for specific compiler optimizations that the program semantics are preserved between compiler optimization passes \cite{leroy2009formal, leroy2016compcert}.
+In 2015, Krebbers presented the CH\textsubscript{2}O formalization for a large fragment of C11 including the \textit{strict aliasing rule}, a feature closely related to restrict \cite{krebbers2015c}.
+More recently, Memarian presented Cerberus, an executable semantics for a large fragment of the ``de facto'' C11 standard \cite{memarian2023cerberus}.
+
+Although much work has been done, restrict is omitted by most formalizations.
+To the best of our knowledge, the only formal semantics project for C which does incorporate restrict is \cink{}, an executable semantics by Ellison and Ro{\c{s}}u \cite{ellison2012executable}.  
+More specifically, the extension to their semantics by Hathhorn \etall \cite{hathhorn2015defining} aims to capture the semantics of undefined behavior and also addresses restrict.
+However, the paper on this extension includes only a single paragraph on restrict which makes it somewhat unclear what the exact behavior in non-trivial programs is.
+Although their test suite contains multiple tests for restrict, they do not include some common situations in which restrict may
+induce undefined behavior.
+
+The \cink{} implementation uses the $\mathbb{K}$-framework \cite{roșu2010overview}, a rewrite-based
+semantics framework, and spans several thousands of lines of rewrite rules and definitions.
+We redevelop the restrict fragment of this implementation in a functional style in order to better understand it.
+The redevelopment consists of an \textit{operational semantics}, a description of the interpretation of a program as a sequence of computational steps,
+and an implementation of the semantics in an interpreter.
+We evaluate the semantics under a more extensive test set and find six programs for which we argue the semantics is incorrect.
+We propose refinements to the semantic domains and rules to fix these problems and test them with our interpreter.
+Then, we incorporate the new semantics in a small sequential C-like language and describe the language
+semantics as a big-step operational semantics.
+The language limits the variable types to \textcode{I32} (32-bit signed integers), \textcode{Ptr(\tau)} and \textcode{Array(\tau, n)}.
+Although simple, we argue this provides enough variety to define a relevant semantics for restrict.
+Firstly, because the inner type of a composite type is irrelevant for the restrict semantics, 
+we have omitted other integers types, floating points and other base types.
+Secondly, supporting arrays provides the necessity for reasoning about objects containing multiple values,
+due to which we have omitted other composite types.
+
+The operational semantics of restrict we present in this thesis uses an inherently different style
+than the \textit{axiomatic style} of the standard section on restrict.
+In such an axiomatic description one needs to verify whether certain conditions are met in order to determine if a program is well-defined or has undefined behavior.
+An operational semantics is considered more intuitive and better suitable for implementation \cite{rocsu2012towards}.
+The interpreter allows one to systematically test a program for undefined behavior, which is a great advantage over both the current standard and the aforementioned proposals for a new definition in natural language.
+Another advantage of a formal semantics over a definition in natural language is that it provides a way to construct formal proofs which can justify optimizations permitted by restrict,
+although we will not do this in this thesis.
+
+\paragraph{Contributions}
+\begin{itemize}
+    \item We redevelop the restrict fragment of the \cink{} semantics in a functional style.
+    We evaluate this fragment of their semantics for C and give arguments for its incorrectness for six
+    programs, in relation to the ISO/IEC standard and/or existing compiler optimizations (chapter \ref{chap:cink}).
+    \item We propose refinements to fix the identified problems with the restrict semantics and
+    integrate the new \textit{Crestrict} semantics into a small C-like language whose meaning is described as a big-step operational semantics (chapter \ref{chapt:improved-semantics} and \ref{chapter:crestrict}).
+    \item We implement the new semantics in the eponymous \textsc{Crestrict} interpreter\footnote{Available as Zenodo artifact \cite{klappe_2024_11031862}}, which is able to detect
+    undefined behavior induced by programs violating the restrict semantics (chapter \ref{chapt:evaluation}).
+\end{itemize}
+
+\paragraph{Non-goals} \leavevmode \\
+We will not fix the definition of the standard in natural language.
+
+\paragraph{Notations and conventions} \leavevmode\\ 
+The type $\Optiontype{\tau}$ denotes the optional type.
+It is either \textit{some} value of type $\tau$, or \textit{none} denoted by $\epsilon$.
+The \errbind \ operator has the same meaning as in Rust and denotes the monadic bind for the optional type:
+if the result of the preceding expression had a value, retrieve that value from the \textit{some} constructor.
+Otherwise, the function returns immediately, propagating the \nonesym \ value.
+
+Lists are denoted as cons lists, in which 
+[] denotes the empty list, and $x : xs$ the list $xs$ with the element $x$
+in front of it.
+We use lists to denote stacks as well.
+For example, ($x : . .. : [y]$) denotes the stack with the item $x$ on top and $y$ at the bottom.
+
+Maps from $K$ to $V$ are denoted as partial functions $K \rightharpoonup V$.
+The notation $M\set{k \leftarrow \Valvar}$ denotes the map $M$ with the value $\Valvar \in V$ at key $k \in K$
+(which overwrites the previous value at $k$ if there was one).
+The notation $\set{k \mapsto \Valvar}$ denotes the singleton map with the value $\Valvar$ at key $k$.
+Element retrieval is denoted by $M(k)$, which gives the value $\Valvar$ at key $k$ or $\epsilon$ if the map had no value at $k$. 
+The notation $M_1 \setminus M_2$ denotes the set $M_1$ with all elements from $M_2$ removed (if they were in $M_1$).
+
+Records use the same notation as in Stacked Borrows \cite{jung2019stacked}.
+That is, a record is denoted as $\left\{\begin{array}{l} A : \Intdomain, B : \Booldomain \end{array} \right\}$ (\eg a record
+with members $A$ of type $\Intdomain$ and $B$ of type $\Booldomain$).
+Updates of a record $Y := [A, B]$ are denoted as $Y' := Y \pseudowith [A := A']$ (\ie $Y'$ is the record $Y$ with
+member $A$ updated to $A'$).
+
+Finally, for simple tuple types such as $\Simplelocvar \in \Simpleloc := \Block \times \Offset$ we will
+assume functions which return a specific component exist with an eponymous name to the component type.
+For example, \textcode{block}(\Simplelocvar) denotes the first component of the \Simpleloc \ \Simplelocvar.
+
+% Specific tools, such as Google Sanitizers \cite{googlesanitizers}, provide a more practical way for (dynamic) error detection in C programs.
+% They work by instrumenting a program at compile time, and use this additional data to verify the absence of
+% specific kinds of undefined behavior at runtime.
+% Among others, they check for memory leaks and overflow bugs, but no 
+% checks for restrict induced undefined behavior are available\footnote{\url{https://github.com/google/sanitizers/issues/1228}}.
+
+% // problem statement
+% The semantics of restrict are subtle and currently do not lend themselves well for a ``formal definition'' in natural language.
+% A formal semantics for restrict is desirable for both implementors and programmers (\eg as a practical tool in the style of Google Sanitizers),
+% as well as more extensive formal semantics projects (\eg to justify optimizations).
+% The only existing work incorporating restrict, \textsc{kcc}, do not present their semantics for restrict in appropriate detail
+% and have some unsubstantiated discrepancies with the ISO/IEC standard definition. 
+
+
+% Undecidable \cite{ramalingam1994undecidability}
+
+% \section{History}
+
+% https://www.lysator.liu.se/c/dmr-on-noalias.html
+
+% No tools https://github.com/google/sanitizers/issues/1228
+
+% \section{Examples}
+% This chapter describes some real-world examples of optimizations performed by compilers
+% based on programmer-specified aliasing information, using the \texttt{restrict} keyword in C. 
+% Unless specifically stated otherwise, assembly code targets the RISC-V 32-bit architecture with
+% the vector extension enabled (hereafter referred to as \texttt{RV32IV}).
+
+% \subsection{Load optimization}\label{subsec:example-load-optimization}

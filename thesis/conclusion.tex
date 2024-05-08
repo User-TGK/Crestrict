@@ -1,0 +1,93 @@
+\chapter{Conclusion and future work}\label{chap:conclusion}
+In this work we have presented Crestrict, an operational semantics for the C99 restrict type qualifier
+based on the restrict fragment of the \cink{} semantics.
+We have seen arguments showing that the existing semantics inadequately models the type qualifier for six specific programs,
+and proposed fixes which refine the semantics.
+We incorporated the new semantics in a small but representative C-like language.
+The test suite we created demonstrates that for all test programs for which we argued the \cink{} semantics gives too little undefined behavior
+Crestrict gives more undefined behavior and vice versa. 
+The interpreter makes the semantics executable and allows one to systematically test whether a given program utilizing restrict has undefined behavior.
+This achieves our goal of providing an alternative resource for restrict, which is not subject to the complex and error-prone definition in natural language of the ISO/IEC standard.
+
+\section{Future work}
+There are various ways in which one could extend our work and we will describe some of them in this section.
+
+\paragraph{Assignments between restrict pointers}
+The first obvious extension is complete support for restrict.
+As we pointed out in section \ref{section:iso-definition}
+we have omitted the restriction for assignments between restrict pointers in our semantics.
+This restriction basically states that only ``outer-to-inner" assignments 
+between restrict pointers declared in nested blocks are well-defined \cite[6.7.3.1, p4]{ISO:2018:III}.
+For example, in the code below the assignments of $q$ to $p$
+and $r$ to $p$ induce undefined behavior, but the assignment of $p$ to $r$ is well-defined.
+In this thesis, we have manually ensured that this restriction is not violated by
+any of the example programs, to make sure it does not conflict with the semantics we have presented for restrict.
+
+\begin{code}
+\begin{minted}[escapeinside=||,mathescape=true]{c}
+int* restrict p;
+int* restrict q;
+p = q; // Undefined behavior
+{
+    int* restrict r = p; // Well-defined
+    p = r;               // Undefined behavior
+}
+\end{minted}
+\end{code}
+
+\paragraph{Extend to a larger language}
+The language considered in this thesis is relatively small and has no support for \eg structs and integer pointer casts.
+We expect incorporating structs and supporting restrict pointers as struct members should be
+compatible with our semantics due to the refinement for array types (section \ref{sec:promoting-block-of-a-base}).
+The integer-pointer casts problem seems more tricky, and an exploration combining our semantics and Memarian \etall \cite{memarian2019exploring}
+could be interesting.
+Furthermore, general type casts (\eg casting the restrict qualifier away from a pointer type) and const (which in conjunction with
+restrict could possibly permit more optimizations) could be interesting.
+
+\paragraph{Verification of program optimizations}
+Another interesting road which can be explored is formally showing that the
+proposed Crestrict semantics permits some desired compiler optimizations.
+This could be done in the style of CompCert, \ie a method similar to the semantic preservation property
+previously discussed in section \ref{sec:related-work}.
+An alternative is Simuliris \cite{gaher2022simuliris}, a framework for the verification of concurrent program optimizations.
+Simuliris has a strong focus on concurrency and establishes ``fair termination preservation''
+for many optimizations, meaning that under a fair scheduler a terminating program is not allowed to be
+turned into a diverging one.
+Similar to CompCert, a correct program optimization means that the result of the optimized
+program must be a possible result of the original program.
+The framework demonstrates its effectiveness by instantiating it for a new concurrent Stacked Borrows (the Rust aliasing discipline previously 
+explained in section \ref{section:rust}), and verifying the correctness of the original optimizations.
+
+\paragraph{Program logic} The development of a program logic for Crestrict could be used to
+formally verify that a program does not contain undefined behavior induced by restrict.
+
+Krebbers \cite{krebbers2015c} defines a separation logic for CH\textsubscript{2}O core C,
+and proved it sound with respect to the operational semantics.
+Program verification employing this logic is done by proving a Hoare triple $\set{P} \ s \ \set{Q}$,
+in which $s$ is a statement, $P$ the precondition and $S$ the postcondition.
+Proving such a triple also ensures the absence of undefined behavior.
+
+
+Louwrink \cite{louwrink2021separation} defines a separation logic for Stacked Borrows. 
+Similar to Krebbers, he also states the adequacy theorem, from which it follows that if a Hoare triple can be derived
+for a program it does not have undefined behavior.
+
+\paragraph{Axiomatic semantics} As we explained in chapter \ref{chap:introduction}, the
+ISO/IEC definition of restrict uses a rather axiomatic description.
+We have chosen to create an operational semantics in this thesis as this type of semantics
+lends itself better for implementation.
+As a result, our semantics does not relate as closely to the standard description as
+one could accomplish with an \textit{axiomatic semantics}.
+Defining such a semantics and possibly show an equivalence relation with our semantics could therefore
+be valuable.
+
+\paragraph{Noalias} As we pointed out in section \ref{section:rust}, both Clang and rustc
+aim to emit the LLVM \texttt{noalias} attribute for C's \textcode{T* restrict} and Rust's \textcode{\&mut \ T} types
+within parameter declarations.
+The LLVM description of noalias\footnote{\url{https://llvm.org/docs/LangRef.html\#parameter-attributes}} states that 
+its definition is intentionally similar to the definition of C's restrict, but also points out some differences
+(\eg annotating return values with noalias has a special meaning).  
+Creating a formal semantics for noalias, or extending existing formal semantics for LLVM such as
+Vellvm \cite{zhao2012formalizing} or K-LLVM \cite{li2020k} would therefore be valuable.
+Having such a semantics would also pave the way to formally show whether Clang preserves
+the program semantics by replacing all occurrences of restrict in function parameter declarations with noalias.

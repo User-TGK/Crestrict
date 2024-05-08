@@ -1,0 +1,369 @@
+\chapter{Related work}
+Developing a formal semantics for the C programming language has been quite an active research area.
+Due to the imprecision of natural language and the desire for a precise semantics (\eg to state and prove theorems about the language),
+various works with their own respective goals have been created over the past decades.
+In section \ref{sec:related-work} we describe some of the memory models used by these semantics and how they relate to our work.
+In section \ref{sec:representational-discrepancies} we compare our functional implementation of the restrict fragment of the \cink{} semantics with their original implementation.
+Finally, in section \ref{section:rust} we discuss two related semantics for the Rust programming language.
+
+\section{Memory models}\label{sec:related-work}
+In section \ref{sec:memory-model} we have previously discussed the differences between concrete, abstract and hybrid memory models.
+In this section we will describe some of the memory models which have been created for C.
+\leavevmode \\
+
+\noindent\textbf{Norrish (1998)} created one of the earlier formal C specifications by defining a structural operational semantics in the HOL theorem prover \cite{norrish1998c}.
+As he treats C89, restrict was not yet added to the language and thus is not part of his semantics.
+The operational semantics are composed of both a small-step semantics (for expressions) and a big-step semantics (for statements).
+Upon this semantics and the accompanying formalization of C's type system, Norrish proved type preservation and type safety for expressions. 
+The memory model is a concrete one: it is implemented as a map from addresses to bytes.
+\leavevmode \\
+
+\noindent\textbf{Leroy \etall (2006)} formalized a large part of C11 for the CompCert project in the Coq proof assistant \cite{leroy2009formal, leroy2016compcert}.
+The main result of their work is the eponymous optimizing CompCert compiler, for which they proved a semantic equivalence between the source program (compiler input) and emitted machine code (compiler output).
+
+The compiler has several passes, of which the first few (except the parser \cite{jourdan2012validating}) are not verified:
+the preprocessed C-source code is parsed, elaborated into an CompCert C AST and then type checked.
+The AST then is converted into a C-like language called Clight~\cite{blazy2009mechanized}, in which  expressions are pure. The next few passes are all verified: each pass compiles its input language into an
+intermediate language, up until one of the supported assembly languages PowerPC, ARM or x86.
+Assembling and linking the sources into an executable is also supported, but not verified.
+
+If a compiler pass is verified, this means that the pass upholds the \textit{semantics preservation} property:
+the observable behaviors produced by a correct output program are acceptable behaviors of the source program.
+This notion accounts for the unspecified evaluation orders of expressions, because
+the output program might have less observable behaviors than the source program due to the compiler making a choice on the order.  
+The project uses a small-step operational semantics for all the languages (including the C source, intermediate and assembly
+languages).
+
+The memory model of CompCert is abstract and was previously explained in detail in section \ref{sec:memory-model}.
+This model does not support interpreting pointers as integer values, \eg for pointer-to-integer casts
+or low-level idioms such as \textcode{mmap} returning $-1$ indicating that no memory is available.
+
+Besson \etall propose a more concrete model in which abstract pointers are mapped to numeric addresses, allowing for reasoning about
+the binary encoding of pointers \cite{besson2015concrete} while preserving deterministic allocations (which is required for proofs of compiler passes).
+They show that the existing memory model is an abstraction of the more concrete one.
+
+Kang \etall propose a ``quasi-concrete memory model" which gives semantics to bit-manipulation of pointer values \cite{kang2015formal}.
+Pointer values in their model are abstract by default and \textit{realized} to a concrete pointer value upon pointer-integer cast. 
+They argue that their semantics are easier than Besson \etall's because normalization is a straightforward
+translation from pointers to concrete blocks and integers, whereas Besson \etall use an SMT solver and have
+more complex semantics in general.
+Integrating either of these semantics could be considered future work,
+we will discuss this more in the context of Memarian \etall \cite{memarian2019exploring}, later in this section.
+
+Campbell gives an executable semantics (in the form of an interpreter) for CompCert C to help ``gaining faith in the CompCert C semantics"
+and shows its equivalence to the original semantics \cite{campbell2012executable}.
+Using the interpreter for testing, he found several bugs in both the semantics and compiler.  
+
+Several ideas from CompCert have influenced this thesis.
+Firstly, the Crestrict source language we define our semantics upon (chapter \ref{chapter:crestrict})
+is based on the Clight language \cite{blazy2009mechanized}.
+Secondly, the memory model we use is based on their abstract memory model.
+\leavevmode
+\\
+
+\noindent \textbf{Krebbers (2015)} gives a formal semantics for a large part of the non-concurrent fragment of C11
+in the CH\textsubscript{2}O project \cite{krebbers2015c}.
+Their memory model incorporates C's aliasing restrictions \cite{krebbers2013aliasing}.
+Similar to restrict, a compiler exploits the \textit{strict aliasing rule}, which states that
+pointers to different types cannot alias, to perform optimizations. However, because C
+contains the \textit{union} type (which is an untagged sum type) this rule cannot be statically enforced by the type system.
+
+The relation with \textit{type-punning} (reading a union through a variant it is not in) leads
+to subtle interactions which are not easy to capture in a formal semantics. Krebbers follows the GCC documentation,
+which states that type-punning is only allowed if ``the memory is accessed through the union type".
+His memory model, based on CompCert, uses well-typed trees with arrays of bits as the contents of a memory object instead of an array of bytes.
+Bits are used as the smallest unit to be able to deal with bit fields of structs.
+The use of trees allows the model to capture the \textit{effective type} of a memory area, which is represented by its state.
+Consequently, pointer values are pairs of object references and a path through the tree.
+The model is implemented in the Coq proof assistant and includes a proof of correctness for the
+strict-aliasing theorem (which captures the strict aliasing rule) and other properties of memory
+operations.
+
+The semantics also have an executable variant, which computes the set of all allowed behaviors (which can
+be plural due to non-determinism) \cite{krebbers2015typed}.
+The executable semantics have been implemented in an interpreter, and were proven sound and complete with respect to the operational semantics.
+
+
+\newpage
+
+\noindent \textbf{Memarian \etall (2019)} give an executable model for a large fragment of the ``de facto" C11 semantics, called The Cerberus C semantics \cite{memarian2023cerberus}.  
+They observe that the values of C cannot be seen as purely concrete nor abstract.
+Their \textit{concreteness} is required for C's features to manipulate of the underlying representation of values,
+such as integer-pointer casts and using \texttt{char} pointers to access individual bytes.
+Their \textit{abstractness} is required for reasoning about provenance of pointers (a concept
+which was previously explained in section \ref{sec:memory-model}), exploited
+by compilers to justify optimizations.
+They point out that the ISO/IEC standard does not explicitly define a notion of provenance,
+but a response by the ISO WG14 C standards committee \cite{defect260} does indicate that implementors may utilize such a concept.
+
+Pointer values are represented by pairs $(\pi, a)$, in which $a$ is a concrete address and $\pi$ is its associated provenance,
+which is either a fresh allocation identifier $@i$ or the empty provenance.
+In order to further explore the design space (also taking into account existing C code), they have developed two semantics for pointers and memory objects in C,
+with a focus on integer-pointer casts \cite{memarian2019exploring}.
+The \textbf{PVI} semantics associates a provenance to not only pointer values but also integer values.
+The provenance is preserved throughout integer-pointer casts.
+The \textbf{PNVI} semantics (for which three variants are defined) takes a different approach and instead assigns the provenance at integer-to-pointer cast points.
+They report that the PVI semantics suffers from the loss of algebraic properties of integer arithmetic
+and some other problems, while PNVI makes some existing compiler behaviors unsound.
+Because PNVI is simpler to define and explain than PVI, they argue PNVI is preferable.
+In 2022 a proposal for a ``Provenance-aware Memory Object Model'' under N3005 was submitted \cite{provmemgustedt2022}.
+This model is, among other papers, based on the PNVI model.
+
+The type of provenance considered in their semantics is used to distinguish addresses based on allocation.
+This allows the PNVI semantics to (re)construct provenance upon integer-pointer casts:
+the numerical address of the pointer must be consistent with its provenance in the sense that 
+it points into a ``live'' allocation and has the correct type.
+For the type of provenance we use (bases) it is not clear if and how it is possible
+to apply this idea.
+We therefore expect that our semantics for restrict would best integrate into the PVI model.
+As a small example, consider the function \textcode{foo} below.
+Depending on the implementation of \textcode{to\_int} the pointer $r$ may be based on $p$.
+If the provenance is preserved throughout casts, $q$ will have the correct provenance
+and after casting back to a pointer, this provenance is propagated to pointer expression $r$.
+
+\begin{code}
+\begin{minted}[escapeinside=||,mathescape=true,linenos]{c}
+extern uintptr_t to_int(int*);
+
+int foo(int* restrict p) {
+    uintptr_t q = to_int(p);
+    int* r = (int*) q; // What bases should $*r$ have? $\label{int-cast-example}$
+
+    return *r;
+}
+\end{minted}
+\end{code}
+
+\newpage
+
+\section{Comparison with \cink{}}\label{sec:representational-discrepancies}
+The \cink{} semantics has been very fundamental for this thesis, as we have
+taken the restrict fragment of this semantics as a basis for developing a more complete semantics for restrict.
+There are two fundamental differences between our semantics and the original \cink{} semantics.
+\begin{enumerate}
+    \item We went from a rewrite-based to a functional-based definition of the \cink{} semantics for restrict (chapter \ref{chap:cink}).
+    \item We introduced new semantic domains and rules (chapter \ref{chapt:improved-semantics} and \ref{chapter:crestrict}) to refine the semantics in order to deal with the problems described in section \ref{sec:cink-incorrect}.
+\end{enumerate}
+
+As part of the first difference, we have made several changes to the representation of the \cink{} domains.
+These are either purely esthetic, for simplicity or to adapt the semantics for the functional-based semantics.
+An overview of these changes is given in table  \ref{table:representational-discrepancies}.
+Despite these discrepancies, the presented examples in this thesis exhibit the same behavior in both the functional
+implementation described in section \ref{sec:restrict-sem} and the original generated \textsc{kcc} interpreter.
+Furthermore, the granularity of our memory model is at a higher level of abstraction than \textsc{kcc}, \ie at the level of values and not bytes.
+This is appropriate because we consider only a small C-like language whereas \textsc{kcc} considers the complete C99 
+and a large fragment of the C11 language 
+and therefore has needs to be able to manipulate the underlying representation of values.
+
+The original \textsc{kcc} interpreter was evaluated under the GCC Torture Tests \cite{ellison2012executable},
+a subset of the Juliet Test Suite for C/C++ and their own Undefinedness Test Suite \cite{hathhorn2015defining}.
+Except the latter, whose restrict related tests we previously discussed in more detail in chapter \ref{chapt:evaluation},
+none of these test suites include tests which check for undefined behavior induced by restrict.
+This is also a clear difference with our evaluation, in which we included a lot more tests specifically for restrict.
+
+The \cink{} project has been continued into the commercial tool RV-Match, ``an improved
+tool for doing practical analysis of real C programs" \cite{guth2016rv}.
+The implementation is closed-source, so we do not know whether it has a different semantics for restrict than
+the original \textsc{kcc} interpreter (but judging from the paper it seems the original semantics are used).
+They evaluate the tool by running it on the Toyota ITC Benchmark \cite{shiraishi2015test}.
+This benchmark also does not have restrict related tests, so we do not know if it detects more undefined behavior induces by restrict.
+
+
+\begin{code}
+\begin{minted}[escapeinside=||,mathescape=true,linenos, texcomments]{c}
+int* restrict p; // Stored at $\Simplelocvar_p = (b_p, 0)$, $\typeof{p} = ((\mathconstr{Ptr} \ \Inttype), \mathconstr{GlobalRestrict})$
+
+// Scope $\redm{\scope{foo}}$\tikzmark{sifoo}
+void foo() {
+    int x;                  // Stored at $\Simplelocvar_x$,
+    p = &x;                 // Declaration scope $\neq \scope{foo}$: $M(\Simplelocvar_p) = \ptr{(\Simplelocvar_x, \set{(b_p, \tikzmark{basesimain}\redm{\scope{main}})})}$
+}
+
+// Scope $\redm{\scope{bar}}$\tikzmark{sibar}
+void bar() {
+    int y;                  // Stored at $\Simplelocvar_y$,
+    int* restrict q = &y;   // Stored at $\Simplelocvar_q = (b_q, \scope{bar})$
+                            // Declaration scope = $\scope{bar}$: $M(\Simplelocvar_q) = \ptr{(\Simplelocvar_y, \set{(b_q, \tikzmark{basesibar}\redm{\scope{bar}})})}$
+}
+
+\end{minted}
+\captionof{listing}{Restrict declaration scopes and bases}
+\label{lst:example-declaration-scopes}
+\end{code}
+
+\begin{tikzpicture}[remember picture,overlay]
+    \draw[<->, dashed, draw=gray, opacity=0.45]
+        (pic cs:sifoo) -- ( $ (pic cs:basesimain) + (0pt, 5pt) $);
+    \draw[<->, dashed, draw=gray, opacity=0.45]
+        (pic cs:sibar) -- ( $ (pic cs:basesibar)   + (0pt, 5pt) $);
+\end{tikzpicture}
+
+\newpage
+
+\begin{table}[H]
+\centering
+\noindent\begin{tabularx}{\textwidth}{ssX}
+\textbf{K-sources}                              & \textbf{Functional representation} &  \textbf{Justification} \\
+\hline
+$\mathtt{\langle restrict \rangle}$ cell        & $R \in \Restrictstack$    & The restrict stack is an evaluation judgment parameter rather than a global state that can be operated on. The content type remains unchanged. \\
+\hline
+$\mathtt{\langle types \rangle} /$ $\mathtt{\langle local\mhyphen types \rangle}$    &    Expressions are annotated with their type, the supported type qualifiers distinguish \mathconstr{Restrict} and \mathconstr{GlobalRestrict}                       & The $\mathtt{\langle types \rangle}$ cell maps
+                identifiers to their types. There is a special relation with the restrict semantics: restrict qualified types are \textit{tagged} with the scope (encapsulated in a \textit{RestrictBlock}) in which they are declared.
+                This is used to add the \textit{BasedOn} provenance to restrict pointer values, in which the associated declaration scope is included.
+
+                In the functional representation we do not have a mapping for types at ``runtime'', but type checked the program before execution.
+                We distinguish \mathconstr{GlobalRestrict} and \mathconstr{Restrict} as type qualifiers.
+                For \mathconstr{GlobalRestrict} we know the declaration scope of the provenance must be \scope{main}.
+                Because variables and parameters local to a function are not accessible from other scopes (compound expressions are not supported), 
+                the active scope in the program execution can be used when a scope identifier needs to be assigned to a base (in the case of type qualifier \mathconstr{Restrict}).
+                An example is given in listing \ref{lst:example-declaration-scopes}.  
+                                                 \\
+\hline   
+\makecell[Xt]{\textit{Scope} $\bnfdef$          \\
+      $| \ \mathconstr{FileScope}$                  \\
+      $| \ \mathconstr{PrototypeScope}$             \\
+      $| \ \mathconstr{BlockScope}($                \\ 
+            \quad    $\mathit{functionId},$     \\
+            \quad    $\mathit{functionLoc}$,    \\ 
+            \quad    $\mathit{block})$}         & $\Scopeidvar \in \Scopeid$                          & Scopes
+              are simplified to unique scope identifier numbers $si$ instead of distinguishing function, file, block
+              and function prototype scopes \cite[6.2.1]{ISO:2018:III}.   \\
+\hline
+$\top$                                          &       $\rsub$             & Emphasize that the undefined behavior state is to be seen as something negative rather than something positive.          \\       \hline        
+\end{tabularx}
+\caption{Representational discrepancies between the \cink{} domains and chapter \ref{chap:cink}}
+\label{table:representational-discrepancies}
+\end{table}
+
+\newpage
+
+
+\paragraph{Annotations of pointer values in memory} \leavevmode \\
+In the annotations for clarification of programs we sometimes act as if a specific pointer value stored in memory has a provenance.
+For example, if $x$ is stored at $\Simplelocvar_x$ and $p$ at $\Simplelocvar_p = (\Blockvar_p, 0)$ in the snippet \mintinline{c}{int x; int* restrict p = &x;},
+then we state that the memory at location $\Simplelocvar_p$ contains $\ptr{(\Simplelocvar_x, \set{(\Blockvar_p, \Scopeidvar)})}$.
+Actually, the provenance will not be added until $p$ is evaluated in rvalue position.
+This corresponds to the rule \ruletarget{E-Lval-Conv-Restrict} in our semantics.
+We have abstracted this away in order to simplify explaining problematic memory accesses with respect to the restrict semantics.  
+
+
+\paragraph{Omission of has-restrict} \leavevmode \\
+The \textsc{kcc} interpreter performs an optimization to speed up restrict related checks, as these can consume quite some time.
+This optimization is based on the $\mathtt{\langle has\mhyphen restrict \rangle}$ cell, which records whether restrict-qualified pointers
+are dynamically in scope.
+If no such pointers are in scope, the checks for restrict violations are disabled.
+Unfortunately, we have found that this optimization is incorrect for some programs, as disabling
+the checks might change whether a program has undefined behavior or not.
+That is, the restrict semantics are not preserved under this optimization.
+
+A problematic program is given in listing \ref{lst:example-incorrect-optimization}.
+The accesses to $\Simplelocvar_y$ in the scopes $\scope{f}$ and $\scope{g}$ lead to the restrict state $\unrestricted$.
+The store to $\Simplelocvar_y$ at line \ref{lst:has-restrict-store} in the scope $\scope{main}$
+means that the restrict checks lead to $\rsub$ due to the join of $\restrictedn$ and $\onlyread{\emptyset}$.
+
+Now, if line \ref{lst:has-restrict-trick} would not be present, the scope $\scope{main}$ would not have
+any restrict pointers in scope and thus the optimization would disable all restrict checks for this scope.
+If the restrict checks are not executed for $\scope{main}$, the program would become well-defined!
+Note that the trick at line \ref{lst:has-restrict-trick} does not otherwise affect the semantics of the program.
+This shows that the optimization might change the restrict semantics.
+
+For all example programs which we evaluated under the \cink{} semantics in thesis,
+one may assume we used the ``most restrictive variant'' of their semantics.
+That is, we have completely omitted the $\mathtt{\langle has\mhyphen restrict \rangle}$ cell
+and optimization performed by it.
+
+\begin{code}
+\begin{minted}[escapeinside=||,mathescape=true,linenos]{c}
+int y; // Stored at $\Simplelocvar_y$
+int z = 0;
+
+// Scope $\scope{g}$
+void g() {
+    z = y; // Load from $y$, $R = [(\scope{g}, \set{\Simplelocvar_y \mapsto \onlyread{\emptyset}}), (\scope{f}, \emptyset), (\scope{main}, \set{\Simplelocvar_y \mapsto \restricted{\emptyset}})]$
+}
+// Scope $\scope{f}$
+int f(int* restrict x) {
+         // $x$ is stored at $\Simplelocvar_x = (\Blockvar_x, 0)$. $M(\Simplelocvar_x) = \ptr {(\Simplelocvar_y, \set{(\Blockvar_x, \scope{f})})}$
+    g(); // After the deferred check, $R = [(\scope{f}, \set{\Simplelocvar_y \mapsto \onlyread{\emptyset}}), (\scope{main}, \set{\Simplelocvar_y \mapsto \restricted{\emptyset}})]$
+    return *x; // Load via $x$, $R = [(\scope{f}, \set{\Simplelocvar_y \mapsto \unrestricted}), (\scope{main}, \set{\Simplelocvar_y \mapsto \restricted{\emptyset}})]$
+}
+// Scope $\scope{main}$
+int main() {
+    int* restrict _;    // A trick to circumvent the <has-restrict> based optimization $\label{lst:has-restrict-trick}$
+    y = 0;              // Store to $y$, $R = [(\scope{main}, \set{\Simplelocvar_y \mapsto \restricted{\emptyset}})]$ $\label{lst:has-restrict-store}$
+
+    f(&y);              // Now, the deferred check attempts to perform the join
+                        // $\unrestricted \joinsym \restrictedn = \rsub$
+                        // But without line $\ref{lst:has-restrict-trick}$ this check would not take place 
+
+    return z;
+}
+\end{minted}
+\caption{An example program demonstrating the incorrectness of the $\mathtt{\langle has\mhyphen restrict \rangle}$ \ based optimization}
+\label{lst:example-incorrect-optimization}
+\end{code}
+
+\newpage
+
+\section{Rust: Stacked and Tree Borrows}\label{section:rust}
+The Stacked Borrows Aliasing Model by Jung \etall \cite{jung2019stacked} addresses
+a problem in the Rust programming language which is conceptually closely related to the one we address in this thesis.
+In Rust, mutable references \textcode{\&mut \ T} provide even stronger aliasing guarantees
+than restrict pointers in C: they cannot alias with anything else in scope, which is statically enforced by the compiler.
+Like in C, the Rust compiler (rustc) gratefully exploits this aliasing information to justify optimizations.
+However, Rust also has \textit{unsafe} code, which are explicitly annotated
+blocks in a program for which the compiler poses fewer restrictions than safe code.
+More specifically, using unsafe Rust, one can alias \textcode{\&mut \ T} variables, thus circumventing the static rules for safe
+Rust and invalidating the aliasing guarantees.
+
+Stacked Borrows addresses this problem by giving an operational semantics for memory accesses, which compose an
+\textit{aliasing discipline} valid Rust programs have to adhere to and assigns undefined behavior to programs failing
+to do so (which do not have to be considered by the compiler).
+This discipline could be considered a dynamic version of the
+\textit{borrow checker}, the static analysis performed by rustc to check that safe Rust adheres to the aliasing rules.
+% Stacked Borrows uses the OS-independent part of the Rust standard library test suite to make sure not too much
+% undefined behavior would be given by the model.
+
+The key idea is that the memory model is extended with a per-location stack containing items for various kind of
+pointers that are able to access the memory location. Pointers are tagged with a unique identifier $t \in (\mathbb{N} \cup \set{\bot})$
+in order to distinguish them. A set of rules describe how the stack progresses when new pointers are created and the memory
+is accessed, and what kind of memory operations are allowed given a state. The stack represents that correct usage of
+references follows a stack discipline: reborrows are pushed on top of the stack, and usage of a pointer pops all items 
+above it.
+
+As a small example, consider the program below. The variable $l$ is allocated and then reborrowed from by $x$ and $y$.
+When $x$ is used, the pointer $y$ is popped off the stack because it is above $x$. When the program attempts to use
+$y$ for a write access, the model assigns undefined behavior to the program because $y$ is not in the borrow stack.
+
+
+\begin{code}
+\begin{minted}[escapeinside=||,mathescape=true,linenos]{rust}
+let mut l = 0;    // $[l]$
+let x = &mut l;   // $[x, l]$
+let y = &mut l;   // $[y, x, l]$
+*x = 1;           // Pop everything above $x$: $[x, l]$
+*y = 2;           // UB: $y$ is no longer in the borrow stack
+\end{minted}
+% \caption{Designating and transferring bases provenance. \\
+%             $M(\Simplelocvar)$ denotes the value at memory address $\Simplelocvar$.}
+% \label{lst:example-based-on}
+\end{code}    
+
+The example program demonstrates only a small fragment of the operational semantics.
+The actual model distinguishes three kinds of pointers: \textit{Unique(t)} (unique mutable access), \textit{SharedRO(t)} (shared read-only access)
+and \textit{SharedRW($\bot$)} (shared mutable read and write access).
+
+The semantics are also implemented in \textit{Miri}, an interpreter for Rust, which either returns
+the program result for valid programs or an error indicating the cause of undefined behavior.
+
+Both Clang and rustc aim to emit LLVM's \textit{noalias}
+attribute for restrict qualified and \textcode{\&mut \ T} variables.
+Stacked Borrows uses the Rust standard library test suite to ensure that it does not give overly much undefined behavior
+for existing code patterns and Coq proofs of compiler transformations to ensure it gives enough undefined behavior.
+This is a clear difference with our semantics, in which we try to follow the standard definition where possible.
+
+Villani \cite{villani2023treeborrows} proposes another aliasing model, called Tree Borrows, which is based on Stacked Borrows and aims to supersede it.
+He argues that the Stacked Borrows model is too strict, and a number of Rust crates would break if rustc
+were allowed to optimize based on Stacked Borrows.
+The main argument is that the stack data structure loses information:  it does not distinguish reborrows from child pointers and parent pointers.
+The model is unfinished at the time of writing and still in the process of being evaluated.

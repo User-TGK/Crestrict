@@ -1,0 +1,781 @@
+\chapter{The Crestrict semantics}\label{chapt:improved-semantics}
+In chapter \ref{chap:cink} we have explained the \cink{} semantics for restrict and argued that it has some problems. 
+In this chapter we will address these problems by proposing several refinements.
+We call the refined \cink{} restrict semantics the \textit{Crestrict} semantics.
+The changes presented in this section are essential to present a more complete operational semantics of restrict,
+integrated in a small C-like language in chapter \ref{chapter:crestrict}.
+
+\setlength{\fboxsep}{2pt}
+\begin{figure}[htb]
+\[\def\arraystretch{1.1}
+\begin{array}{lrll}
+b \in \Block, \delta \in \Offset            &   :=          & \mathbb{Z}                                                      & \\
+\Scopeidvar \in \Scopeid                    &   :=          & \mathbb{Z}                                                      & \\
+\Simplelocvar \in \Simpleloc                &   :=          & \Block \times \Offset                                           & \\
+l \in \Loc                                  &   :=          & \Simpleloc \times \Bases                                   & \\
+\Basevar \in \Base                          &   :=          & \highlightchangem{\Loc} \times \Scopeid \\
+\Basesvar \in \Bases                        &   :=          & \Set{\Base}                                                     & \\
+
+\highlightchangem{\Basesfamvar \in \Basesfam}
+                                            &   :=          & \highlightchangem{\Set{\Bases}}                                             & \\
+\Restrictstatevar \in \Restrictstate        &   \bnfdef     & \highlightchangem{\onlyread{\Basesfamvar}}                                 & \\
+                                            &   |           & \restricted{\Basesvar}                                     & \\
+                                            &   |           & \rsub                                                           & \\
+                                            &   |           & \bot                                                            & \\
+\Restrictmapvar \in \Restrictmap            &   :=          & \Simpleloc \rightarrow \Restrictstate                           & \\
+R \in \Restrictstack                        &   :=          & \List{\Scopeid \times \Restrictmap}    
+\end{array}
+\]
+\caption{Crestrict related domains, \\ differences compared to the \cink{} domains are highlighted}
+\label{fig:cink-domains2}
+\end{figure}
+
+In figure \ref{fig:cink-domains2} a new version of the \cink{} domains is defined.
+Throughout the remaining sections of this chapter, we will explain and justify the changes compared to figure \ref{fig:cink-domains}.
+In section \ref{sec:substituting-unrestricted} we address the removal of \unrestricted \ in favor of promoting the data of $\mathconstr{OnlyRead}$ to a family of sets of bases.
+In section \ref{sec:promoting-block-of-a-base}, we will explain why the $\Block$ of a base has been promoted to a $\Loc$.
+Finally, section \ref{sec:moving-up-the-deferred-check} and \ref{sec:filtering-bases} explain how we improve upon the deferred restrict check
+and prevent locations with out of scope bases.
+These latter two sections are not related to changes within the domains, but to the actual operational rules.
+
+\newpage
+
+% Incorporating $\unrestricted$ in $\mathsf{OnlyRead}$
+\section{Aliasing loads}\label{sec:substituting-unrestricted}
+\vspace*{-\baselineskip}
+\begin{table}[htp]
+\begin{tabular}{ll}
+\textit{Domain changes:}   &  $\Restrictstate$ \\
+\textit{Related problems:} & \ref{subsec:aliasing-reads} (TMU)    \\
+\end{tabular}
+\end{table}
+
+The fundamental problem with the semantics for aliased loads is information loss, which leads to too much undefined behavior.
+The state representing loads via locations with different bases, \unrestricted, throws these bases away
+rather than keeping track of them.
+This makes it impossible to join this state with the \restricted{\Basesvar} state from a prior scope. More concrete, it excludes
+the possibility that the bases of the aliased pointers used for loading have the same subset
+of bases, \ie they are based on the same restrict pointer somewhere in a prior scope.
+
+The idea is to remove \unrestricted \ entirely (1), and promote the \onlyread{\Basesvar} data to a family of sets of bases:
+\onlyread{\Basesfamvar} (2).
+Every member of the family denotes a set of bases which was used to load from the location, so that we retain all information.
+Basically, the state \onlyread{\set{\Basesvar}} in the Crestrict semantics is equivalent to $\onlyread{\Basesvar}$ in the \cink{} semantics
+and $\onlyread{\Basesfamvar}$ with $\lvert\Basesfamvar\rvert > 1$ in the Crestrict semantics is similar to
+$\unrestricted$ in the \cink{} semantics, with the only difference being that the Crestrict semantics tracks via which bases
+the location has been loaded from.
+
+To show how the Crestrict semantics preserves the requirements of $\unrestricted$, consider the case when different pointers with bases $\Basesvar_1$ and $\Basesvar_2$ load from the same location.
+The restrict state is set to $\onlyread{\set{\Basesvar_1, \Basesvar_2}}$.
+Attempting to store to this location means we attempt to join this restrict state with $\restricted{\Basesvar}$, which is
+\textit{always} prohibited because $\lvert\set{\Basesvar_1, \Basesvar_2}\rvert > 1$ and thus results in $\rsub$. This property
+justifies change $1$. Similarly, when loading twice via a pointer with the same bases $\Basesvar$, the restrict state
+is set to $\onlyread{\set{\Basesvar}}$. This is exactly what the operation $\onlyread{\Basesvar} \joinsym \onlyread{\Basesvar}$
+in the original \cink{} semantics does: retain the $\mathconstr{OnlyRead}$ state, allowing us to still be able to
+join with the \restrictedn \ state, which justifies change 2.
+Because we changed the $\Restrictstate$ type, we have updated the join (figure \ref{figure:updated-definition-of-join}) and \filterbases \ (figure \ref{fig:auxiliary-bases-filtering-2}) functions accordingly.
+
+In figure \ref{subfig:restrict-state-aliased-loads-2} we show how the Crestrict semantics handles aliased loads, compared
+to the \cink{} semantics in figure \ref{subfig:restrict-state-aliased-loads-1}.
+This figure does not represent a specific program, but represents the fragment of the restrict stack corresponding to the fundamental problem.
+The stack symbol denotes the restrict stack $R$ at some execution point of a program.
+Each tile in the stack is a restrict map $\Restrictmapvar$ (representing the right component of the restrict stack item), with the tile at the top representing the
+currently active scope.
+At the left of each tile the associated scope identifier is depicted, shaded in gray (representing the left component of the restrict stack item).
+The dashed arrow between two tiles represents the merge which happens when a scope exits, as was explained in section \ref{sec:restrict-sem}.
+The label at this arrow shows the result of the join operation for the relevant restrict state.
+
+In scope \scope{m} the restrict state of $\Simplelocvar_x$ represents that aliased loads have occurred,
+so it is either $\unrestricted$ (for the \cink{} semantics) or $\onlyread{\Basesfamvar}$ (for the Crestrict semantics).
+Scope \scope{n} is some prior scope in which a store to $\Simplelocvar_x$ was performed via a location with bases $\Basesvar$.
+Now, the Crestrict semantics allows for joining the restrict state of $\Simplelocvar_x$ in \scope{m} with the restrict state
+of $\Simplelocvar_x$ in \scope{n},
+if the precondition $(\filterbases \ (\onlyread{\Basesfamvar}, \scope{m})) = \set{\Basesvar}$ is met.
+This was exactly the objective of the changes: induce less undefined behavior by permitting aliased
+loads in a broader context.
+
+\begin{figure}[H]
+\begin{alignat*}{3}
+    \onlyread{\Basesfamvar}     & \joinsym \ & \onlyread{\Basesfamvar}   = \    & \onlyread{\Basesfamvar}  \\
+    \onlyread{\set{\Basesvar}}     & \joinsym \ & \onlyread{\set{\Basesvar}}   = \  & \onlyread{\set{\Basesvar}} \\
+    \onlyread{\Basesfamvar}     & \joinsym \ & \onlyread{\Basesfamvar'}  = \    & \onlyread{(\Basesfamvar \cup \Basesfamvar')}  \\
+    \onlyread{\set{\Basesvar}}  & \joinsym \ & \restricted{\Basesvar} = \       & \restricted{\Basesvar} \\
+    \restricted{\Basesvar}      & \joinsym \ & \restricted{\Basesvar} = \       & \restricted{\Basesvar} \\
+    \onlyread{\Basesfamvar}     & \joinsym \ & \restricted{\Basesvar} = \      & \rsub \\
+    \restricted{\Basesvar}      & \joinsym \ & \restricted{\Basesvar'} = \      & \rsub \\
+    \textit{lhs}                & \joinsym \ & \rsub        = \                 & \rsub \\
+    \bot                        & \joinsym \ & \textit{rhs}    = \              & \textit{rhs}
+\end{alignat*}
+\caption{Updated definition of the symmetric operation \joinsym, with $\Basesvar \neq \Basesvar'$, $\Basesfamvar \neq \set{\Basesvar}$ and $\Basesfamvar \neq \Basesfamvar'$}
+\label{figure:updated-definition-of-join}
+\end{figure}
+\begin{figure}[h]
+    \begin{align*}
+    \filterbases                                         : & \ RestrictState \times ScopeId \rightarrow RestrictState \\
+    \filterbases \ (\restricted{\Basesvar}, \Scopeidvar)    = & \ \restricted{(\filterbasesrec \ (\Basesvar, \Scopeidvar))} \\
+    \filterbases \ (\onlyread{\Basesfamvar}, \Scopeidvar)   = & \ \onlyread{\Basesfamvar'} \textrm{ with } \Basesfamvar' := \\
+    \omit\rlap{\hspace{2cm}$\{X \mid X = (\filterbasesrec \ (\Basesvar, \Scopeidvar)), \Basesvar \in \Basesfamvar\}$}
+    \end{align*}
+    \begin{align*}
+    \filterbasesrec                                             : & \ \Bases \times ScopeId \rightarrow \Bases \\
+    \filterbasesrec \ (\emptyset, \_)                              = & \ \emptyset \\
+    \filterbasesrec \ ((\_, \Scopeidvar) : \Basesvar, \Scopeidvar) = & \ \filterbasesrec (\Basesvar, \Scopeidvar) \\
+    \filterbasesrec \ ((\Locvar, \Scopeidvar') : \Basesvar, \Scopeidvar) = & \ (\Locvar, \Scopeidvar') : \filterbasesrec (\Basesvar, \Scopeidvar)
+    \end{align*}
+    \vspace{-0.8cm}
+\caption{Updated auxiliary functions for filtering location bases}
+\label{fig:auxiliary-bases-filtering-2}
+\end{figure}
+
+\begin{figure}[htp]
+\centering
+\begin{subfigure}{\textwidth}
+\centering
+\begin{tikzpicture}[stack/.style={rectangle split, rectangle split parts=#1, draw, anchor=center, text centered},
+                    scope/.style={fill=gray!20, anchor=center}]
+    % Stack
+    \node[stack=3, minimum width=4.0cm] (s) {
+        \nodepart{one} $\set{\Simplelocvar_x \mapsto \unrestricted}$
+        \nodepart{two} \raisebox{-0.5\height}{\strut$\vdots$}
+        \nodepart{three} $\set{\Simplelocvar_x \mapsto \restricted{\Basesvar}}$
+    };
+
+    % Scopes
+    \node[scope, left=5pt of s.one west]   {\scope{m}};
+    \node[scope, left=5pt of s.two west]   {$\hdots$};
+    \node[scope, left=5pt of s.three west] {\scope{n}};
+
+    \draw[->, dashed, thick] (s.one east) to[bend left=50] node[right] {\join{\unrestricted}{\restricted{\Basesvar}} \ = \rsub} (s.three east);
+\end{tikzpicture}
+\caption{\cink{} semantics}
+\label{subfig:restrict-state-aliased-loads-1}
+\end{subfigure}
+
+\vspace*{25pt}
+
+
+\begin{subfigure}{\textwidth}
+\centering
+\begin{tikzpicture}[stack/.style={rectangle split, rectangle split parts=#1, draw, anchor=center, text centered},
+    scope/.style={fill=gray!20, anchor=center}]
+% Stack
+\node[stack=3, minimum width=4.0cm] (s) {
+\nodepart{one} $\set{\Simplelocvar_x \mapsto \onlyread{\Basesfamvar}}$
+\nodepart{two} \raisebox{-0.5\height}{\strut$\vdots$}
+\nodepart{three} $\set{\Simplelocvar_x \mapsto \restricted{\Basesvar}}$
+};
+
+% Scopes
+\node[scope, left=5pt of s.one west]   {\scope{m}};
+\node[scope, left=5pt of s.two west]   {$\hdots$};
+\node[scope, left=5pt of s.three west] {\scope{n}};
+
+\draw[->, dashed, thick] (s.one east) to[bend left=50] node[right] {
+    \begin{tabular}{c}
+        $(\filterbases{\ ( \onlyread{\Basesfamvar}, \scope{m})}) = \onlyread{\set{\Basesvar}}$ \\
+        \hline
+        $\join{\onlyread{\set{\Basesvar}}}{\restricted{\Basesvar}} \ = \restricted{\Basesvar}$
+    \end{tabular}
+} (s.three east);
+\end{tikzpicture}
+\caption{Crestrict semantics}
+\label{subfig:restrict-state-aliased-loads-2}
+
+\end{subfigure}
+\caption{Restrict state of aliased loads}
+\label{fig:restrict-state-aliased-loads}
+\end{figure}
+
+\FloatBarrier 
+
+\newpage
+
+\section{Promoting the block of a base}\label{sec:promoting-block-of-a-base}
+\vspace*{-\baselineskip}
+\begin{table}[h]
+\begin{tabular}{ll}
+\textit{Domain changes:}   &  $\Bases$ \\
+\textit{Related problems:} & \ref{subsec:cink-nested-restrict-pointers}, \ref{subsec:indistinguishable-restrict-pointers} (TLU)  \\
+\end{tabular}
+\end{table}
+
+The first component of a \Base \ is no longer a \Block \ but a complete \Loc.
+The reason for this is best explain incrementally.
+
+\begin{enumerate}
+    \item \Base \ := $\Simpleloc \times \Scopeid$ (first \Block \ is replaced by a \Simpleloc) \\
+    This preliminary substitution allows the semantics to distinguish restrict qualified array \textit{element objects}
+    and will be explained in section \ref{subsec:promoting-the-block-of-a-base-arrays}.
+    \item \Base \ := $\Loc \times \Scopeid$ (in which \Block \ is now a \Loc) \\
+    Taking the idea above one step further, this substitution also includes the ``bases of a base'' (\ie the base 
+    of a $Loc$ includes a $Loc$), making it a recursive definition. This permits the semantics to backtrack
+    through which location a restrict qualified object itself was accessed, required to support a subclause of
+    the standard which is especially relevant for nested restrict pointers and will be explained in
+    section \ref{subsec:modification-of-the-restrict-object}.
+\end{enumerate}
+
+\subsection{Arrays}\label{subsec:promoting-the-block-of-a-base-arrays}
+As we explained in section \ref{subsec:indistinguishable-restrict-pointers}, the semantics cannot distinguish
+restrict qualified objects which are array element objects because these objects have the same \Block.
+This leads to too little undefined behavior given by the \cink{} semantics.
+This is resolved by also including the \Offset, \ie including the complete \Simpleloc \ of the restrict qualified
+object, into the base.
+
+For example, the small fragment of C code depicted on the left in figure \ref{fig:array-bases} contains an
+array $a$ of restrict qualified integer pointers.
+The memory layout is depicted on the right, in which vertices represent memory cells,
+vertices with diagonal lines restrict qualified objects and edges pointer indirections. 
+The text within a vertex represents the value of the memory cell, and the label just below
+it the memory address.
+
+
+Using \Simpleloc \ in the \Base, we can now distinguish these pointers because their provenance differs:
+$\Simplelocvar_{a_0} \neq \Simplelocvar_{a_1}$, whereas $(\mathtt{block} \ \Simplelocvar_{a_0}) = (\mathtt{block} \ \Simplelocvar_{a_1}) = \Blockvar_a$.
+This means we can now give undefined behavior to restrict violations via restrict pointers in an array,
+which was exactly the objective of the change.
+
+\begin{figure}[htp]
+\centering
+\begin{minipage}{.5\textwidth}
+\centering  
+\begin{minted}[escapeinside=||,mathescape=true,linenos]{c}
+// Scope $\scope{}$
+{
+    int x = 0; // Stored at $\Simplelocvar_x$
+               // Stored at $\Blockvar_a$
+    int* restrict a[2] = {&x, &x};
+}
+\end{minted}
+\end{minipage}%
+\begin{minipage}{.5\textwidth}
+\centering
+\begin{tikzpicture}[
+    arraynode/.style={draw, minimum height=2em},
+    nodelabel/.style={below=0.05cm of #1},
+    arraylabel/.style={above=0.05cm of #1},
+    mycurve/.style={decorate, decoration={snake, amplitude=0.3, segment length=5}},
+    cbrace/.style={decorate,decoration={brace,amplitude=5pt,raise=4ex}}
+]
+    \node[arraynode,restrict-node]                                       (a0) {$(\Simplelocvar_x, \set{(\Simplelocvar_{a_0}, \scope{})})$};
+    \node[right = 0pt of a0.east, anchor=west, arraynode, restrict-node] (a1) {$(\Simplelocvar_x, \set{(\Simplelocvar_{a_1}, \scope{})})$};
+    \node[below=30pt of $(a0.south)!0.5!(a1.south)$, arraynode]          (x)  {$0$};
+
+    \node[below=0.05cm of a0, xshift=-0.5cm] {\scriptsize$\Simplelocvar_{a_0} = (B_a, 0)$};
+    \node[below=0.05cm of a1, xshift=0.5cm] {\scriptsize$\Simplelocvar_{a_1} = (B_a, 1)$};
+    \node[nodelabel=x] {\scriptsize$\Simplelocvar_x$};
+
+    \draw[->] (a0) to (x);
+    \draw[->] (a1) to (x);
+
+    \draw[cbrace] ([yshift=-0.3cm]a0.north west) to node[midway, above, yshift=1cm] {\scriptsize Array $a$} ([yshift=-0.3cm]a1.north east);
+
+    % \draw[mycurve] ([yshift=0.2cm]a0.north west) to[out=45,in=135] node[above] {\scriptsize Array $a$} ([yshift=0.2cm]a1.north east);
+\end{tikzpicture}
+\end{minipage}
+\caption{Distinguishing restrict qualified objects within an array}
+\label{fig:array-bases}
+\end{figure}
+
+\newpage
+
+\subsection{Modification of the restrict object itself}\label{subsec:modification-of-the-restrict-object}
+In section \ref{subsec:cink-nested-restrict-pointers} we showed that nested restrict pointers 
+have a subtle interaction with a subclause of the standard.
+This clause describes that accesses modifying the
+object $X$ designated by the restrict qualified object $P$ are also considered to modify $P$ itself.
+As this clause is not covered by the \cink{} semantics, too little undefined behavior is given.
+In order to incorporate this clause in the semantics, two properties need to be taken into account:
+
+\begin{enumerate}
+    \item ``$P$ is also considered modified'' means the restrict state of $P$ must be joined with $\restrictedn$. 
+    \item The definition is recursive, \ie if $P_1$ is used to load $P_2$ and $P_2$ is used to modify $X$,
+    $P_2$ is considered modified and therefore $P_1$ is also considered modified.
+\end{enumerate}
+
+
+To see how these properties can best be incorporated into the semantics, consider an example program
+with nested restrict pointers and its memory layout in figure \ref{fig:mem-layout-nested-restrict}.
+Besides the standard vertices and edges that were previously introduced for figure \ref{fig:array-bases},
+pointer indirections are now also labelled to indicate whether the pointer value is used for a 
+store or load (including the corresponding bases used for the access).
+Secondly, the dashed edge represents that the memory location pointed towards is considered modified due
+to (1), \ie because the memory location the edge originated from was modified.
+
+The program creates a pointer \textdom{xp} to $x$ at line \ref{lst:example-nested-xp-ptr}.
+Then, two nested restrict pointers $p$ and $q$ are created, which both point to \textdom{xp}
+but have different provenance.
+The first memory access of $\Simplelocvar_x$ (after initialization) occurs at line \ref{lst:example-nested-assignment-p}.
+This assignment actually results in several changes to the restrict stack.
+The first dereference $*p$ loads the lvalue $\Simplelocvar_{xp}$ from $\Simplelocvar_p$, updating the restrict state of $\Simplelocvar_p$
+to $\onlyread{\emptyset}$.
+The second dereference $\mathbin{**}p$ then updates the restrict state of $\Simplelocvar_{xp}$ to $\onlyread{\set{(\Simplelocvar_{p}, \scope{})}}$.
+The loaded location is $(\Simplelocvar_x, \set{(\Simplelocvar_{xp}, \scope{})})$, which is used for a store so the restrict state of $\Simplelocvar_x$ becomes
+$\restricted{\set{(\Simplelocvar_{xp}, \scope{})}}$.
+
+As this store is a modification, the semantics should also change the restrict state of $\Simplelocvar_{xp}$ by property (1).
+But this means that the restrict state which represents this modification must be joinable with the current restrict of $\Simplelocvar_{xp}$, which is $\onlyread{\set{(\Simplelocvar_{p}, \scope{})}}$.
+The only restrict state that meets this requirement is $\restricted{\set{(\Simplelocvar_{p}, \scope{})}}$.
+But currently, it is not possible to create this restrict state because the location $(\Simplelocvar_x, \set{(\Simplelocvar_{xp}, \scope{})})$
+does not contain enough information to set the correct bases (\ie it does not know the base location $\Simplelocvar_{xp}$ is derived from $\Simplelocvar_p$).
+Therefore, we must extend the provenance with the information that the lvalue $*p$ is derived from $\set{(\Simplelocvar_p, \scope{})}$.
+
+\begin{figure}[htp]
+\centering
+\begin{minipage}{.5\textwidth}
+\centering  
+\begin{minted}[escapeinside=||,mathescape=true,linenos]{c}
+// Scope $\scope{}$
+{
+    int x = 0;    // Stored at $\Simplelocvar_x$
+    int* xp = &x; // Stored at $\Simplelocvar_{xp}$ $\label{lst:example-nested-xp-ptr}$
+                  // $M(\Simplelocvar_{xp}) = \ptr{(\Simplelocvar_x, \emptyset)}$
+    // Stored at $\Simplelocvar_p$
+    int *restrict *restrict p = &xp;
+    // $M(\Simplelocvar_p) = \ptr{(\Simplelocvar_{xp}, \set{(\Simplelocvar_p, \scope{})})}$
+    // Stored at $\Simplelocvar_q$
+    int *restrict *restrict q = &xp;
+    // $M(\Simplelocvar_q) = \ptr{(\Simplelocvar_{xp}, \set{(\Simplelocvar_q, \scope{})})}$
+    // The first load $*q$ should result in $\rsub$
+
+    **p = 10; // Load from $*p$, store via $\mathbin{**}p\label{lst:example-nested-assignment-p}$
+    **q = 11; // Load from $*q$, store via $\mathbin{**}q\label{lst:example-nested-assignment-q}$
+}
+\end{minted}
+\end{minipage}%
+\begin{minipage}{.5\textwidth}
+\centering
+\begin{tikzpicture}[every edge quotes/.style = {auto, font=\scriptsize, sloped}]
+\node (XP) [restrict-node, cell,draw,label=left:$\Simplelocvar_{xp}$] at  (0,0) {$(\Simplelocvar_x, \set{(\Simplelocvar_{xp}, \scope{})})$};
+
+\node (P)  [restrict-node, cell, draw, label=left:$\Simplelocvar_p$] at (0, 2) {$(\Simplelocvar_{xp}, \set{(\Simplelocvar_{p}, \scope{})})$};
+\node (Q)  [restrict-node, cell, draw, label=left:$\Simplelocvar_q$] at (0, -2) {$(\Simplelocvar_{xp}, \set{(\Simplelocvar_{q}, \scope{})})$};
+
+\node (X)  [cell,draw,label=below:$\Simplelocvar_x$] at  (4.5,0) {0};
+
+\path[->] (P) edge node[right] {\scriptsize load($\set{(\Simplelocvar_{p}, \scope{})}$)} (XP);
+\path[->, bend left=20, dashed]   (XP.north west) edge node[right, auto=false] {\scriptsize modified} (P.south west);
+
+\path[->] (Q) edge node[right] {\scriptsize load($\set{(\Simplelocvar_{q}, \scope{})}$)} (XP);
+\path[->, bend right=20, dashed]   (XP.south west) edge node[right, auto=false] {\scriptsize modified} (Q.north west);
+
+\path[->]   (XP)  edge node[below] {\scriptsize store($\set{(\Simplelocvar_{xp}, \scope{})}$)} (X);
+\path[->, bend right=20, dashed, draw=red]   (X.north west) edge node[above, auto=false] {\scriptsize modified} (XP.north east);
+
+\end{tikzpicture}
+\end{minipage}
+\caption{Memory layout of nested restrict pointers}
+\label{fig:mem-layout-nested-restrict}
+\end{figure}
+
+
+This is the point where we promote the $\Simpleloc$ component of a base to a \Loc.
+By including the bases of each base, the semantics now has all the information needed to determine how the location of a restrict qualified object was constructed.
+
+Recall the new definition of \Loc \ from figure \ref{fig:cink-domains2}.
+The evaluation of $\mathbin{**}p$ as lvalue now results in: $l = (\Simplelocvar_x, \set{ ( (\Simplelocvar_{xp}, \set{ ( (\Simplelocvar_{p},  \emptyset), \scope{}) }), \scope{}) })$.
+Now, because that lvalue is used to modify $\Simplelocvar_x$ we have to also modify the restrict state of its bases,
+\ie for every $(l', \_) \in \mathtt{bases}(l)$ the semantics acts as if a store via $l'$ has occurred.
+This matches the desired recursive definition (2) and results in the following restrict map:
+$\set{\Simplelocvar_x \mapsto \restricted{\set{((\Simplelocvar_{xp}, \set{((\Simplelocvar_p, \emptyset), \scope{})}), \scope{})}}, \\ \Simplelocvar_{xp} \mapsto \restricted{\set{((\Simplelocvar_{p}, \emptyset), \scope{})}}, \Simplelocvar_p \mapsto \restricted{\emptyset} }$.
+
+When we continue program execution at line \ref{lst:example-nested-assignment-q}, we now have an access which induces undefined behavior.
+In fact, the first dereference $*q$ is the problematic access: we attempt to join $\onlyread{\set{((\Simplelocvar_q, \emptyset), \scope{})}}$
+with the current restrict state of $\Simplelocvar_{xp}$ $\restricted{\set{((\Simplelocvar_{p}, \emptyset), \scope{})}}$, resulting in $\rsub$.
+This means if we replace line \ref{lst:example-nested-assignment-q} with $*q$ (a simple load), the program also has undefined behavior.
+This shows that the objective of the changes is achieved: induce more undefined behavior by modelling the subclause
+stating the restrict object itself is considered modified. 
+
+\paragraph{A tree of lvalue bases}
+As a recursive structure, a location can be depicted as a tree.
+Consider the program depicted on the left in figure \ref{fig:tree}, which shows how the tree can grow both in breadth and depth.
+At line \ref{fig:lst:tree-q-value}, the lvalue $\mathbin{**}q$ is the location \\
+$(\Simplelocvar_x, \set{  ( (\Simplelocvar_{xp}, \set{ ((\Simplelocvar_q, \emptyset), \scope{bar}), ((\Simplelocvar_p, \emptyset), \scope{foo}) }),  \scope{bar})           })$.
+Its tree structure is depicted on the right, in which the root node is the \Simpleloc \
+of the actual location, the first child its base and the children of the child represent the bases of the
+child. 
+
+\begin{figure}[htp]
+\centering
+\begin{minipage}{.5\textwidth}
+\centering  
+\begin{minted}[escapeinside=||,mathescape=true,linenos]{c}
+// Scope $\scope{bar}$
+int bar(int *restrict *restrict q) {
+                // Stored at $\Simplelocvar_q$
+                // $M(\Simplelocvar_q) = \ptr{(\Simplelocvar_{xp}, \set{((\Simplelocvar_q, \emptyset), \scope{bar}), ((\Simplelocvar_p, \emptyset), \scope{foo})})}$
+    return **q; // What is the lvalue here?$\label{fig:lst:tree-q-value}$
+}
+
+// Scope $\scope{foo}$
+int foo() {
+    int x;          // Stored at $\Simplelocvar_x$
+    int* xp = &x;   // Stored at $\Simplelocvar_{xp}$
+                    // $M(\Simplelocvar_{xp}) = \ptr{(\Simplelocvar_x, \emptyset)}$
+
+    int **restrict p = &xp;
+                    // Stored at $\Simplelocvar_p$
+                    // $M(\Simplelocvar_p) = \ptr{(\Simplelocvar_{xp}, \set{((\Simplelocvar_p, \emptyset), \scope{})})}$
+
+    return bar(p);
+}
+\end{minted}
+\end{minipage}%
+\begin{minipage}{.5\textwidth}
+\centering
+\begin{tikzpicture}[sibling distance=25mm,      edge from parent/.style={draw, dashed},
+    every edge/.append style={->}    ]
+\node (root) {$\Simplelocvar_x$}
+    child {node {$(\Simplelocvar_{xp}, \scope{bar})$}
+    child {node {$(\Simplelocvar_q, \scope{bar})$}}
+    child {node {$(\Simplelocvar_p, \scope{foo})$}}
+    };
+
+\end{tikzpicture}
+\end{minipage}
+\caption{Tree depiction of lvalue $\mathbin{**}q$ at line \ref{fig:lst:tree-q-value}}
+\label{fig:tree}
+\end{figure}
+
+% A recursively defined location has the following shape: \\
+% $(\Simplelocvar_x, \set{ ( (\Simplelocvar_{p1}, \set{ ( (\Simplelocvar_{pn},  \emptyset), \scope{}) }), \scope{})  })$
+
+\newpage
+
+\section{Moving up the deferred check}\label{sec:moving-up-the-deferred-check}
+\vspace*{-\baselineskip}
+\begin{table}[h]
+\begin{tabular}{ll}
+\textit{Domain changes:}   &  N.A. \\
+\textit{Related problems:} & \ref{subsec:cink-inlining-semantics} (TLU)  \\
+\end{tabular}
+\end{table}
+
+The deferred restrict check is meant to perform the restrict checks for accesses occurring in different scopes.
+The problem is that, as the name suggests, the check is not performed straight away.
+As previously shown, this means that optimizing a program by inlining a function may change whether it contains
+undefined behavior or not, which is undesirable.
+The idea is to detect these cases of undefined behavior directly when they occur, by performing joins not
+only with the top item on the restrict stack but also with every other map that contains a \Restrictstate $\ \neq \bot$.
+While moving through the restrict stack from top to bottom, the restrict state $\Restrictstatevar$ is filtered 
+to remove bases whose scope has terminated.
+
+The reason we only consider restrict states which are unequal to $\bot$ is two-fold.
+Firstly, when updating the restrict stack due to memory accesses, we do not know in which scopes a location
+is still valid.
+So if we were to also join with restrict state $\bot$, we would not know at which restrict map we should stop.
+Secondly, we need at least two memory accesses to induce undefined behavior, so only considering 
+restrict states where a prior access has occurred is therefore an appropriate choice. 
+
+A visual representation of this operation is depicted in figure \ref{figure:moving-up-the-deferred-check}.
+Applying this operation to the example of listing \ref{lst:example-not-inlined} means that this program is now assigned undefined
+behavior and that the function inlining optimization now preserves the semantics.
+\\
+
+\begin{figure}[htp]
+\centering    
+\begin{tikzpicture}[stack/.style={rectangle split, rectangle split parts=#1, draw, anchor=center},
+    scope/.style={fill=gray!20, anchor=center}]
+% Stack
+\node[stack=4, minimum width=4.0cm] (s) {
+\nodepart{one} $\set{\Simplelocvar_x \mapsto \bot}$
+\nodepart{two} $\set{\Simplelocvar_x \mapsto \bot}$
+\nodepart{three} $\set{\Simplelocvar_x \mapsto \restricted{\Basesvar}}$
+\nodepart{four} $\set{\Simplelocvar_x \mapsto \bot}$
+};
+
+% Scopes
+\node[scope, left=5pt of s.one west] (scope2)  {\scope{n_3}};
+\node[scope, left=5pt of s.two west]   {\scope{n_2}};
+\node[scope, left=5pt of s.three west] {\scope{n_1}};
+\node[scope, left=5pt of s.four west] {\scope{n_0}};
+
+\draw[latex-, dashed] (s.one east)   -- node[right=1.5] {\scriptsize joined with $\Restrictstatevar$ because $\scope{n_3}$ = current scope}  ++(3,0);
+\draw[latex-, dashed] (s.three east) -- node[right=1.5] {\scriptsize joined with $\Restrictstatevar$ because the restrict state $\neq \bot$} ++(3,0);
+
+\draw[->, dashed] ([yshift=-3pt] s.one east) to[bend left=70] node[right] {\scriptsize $\Restrictstatevar := \filterbases(\Restrictstatevar, \scope{n_3})$} ([yshift=3pt]s.two east);
+\draw[->, dashed] ([yshift=-3pt]s.two east) to[bend left=70] node[right] {\scriptsize $\Restrictstatevar := \filterbases(\Restrictstatevar, \scope{n_2})$} ([yshift=3pt]s.three east);
+\draw[->, dashed] ([yshift=-3pt]s.three east) to[bend left=70] node[right] {\scriptsize $\Restrictstatevar := \filterbases(\Restrictstatevar, \scope{n_1})$} ([yshift=3pt]s.four east);
+
+
+\end{tikzpicture}
+\vspace*{-0.2cm}
+\caption{Joining $\Restrictstatevar$ with multiple $\Restrictmap$s}
+\label{figure:moving-up-the-deferred-check}
+\end{figure}
+
+\vspace*{-0.2cm}
+
+\section{Filtering bases of pointer values}\label{sec:filtering-bases}
+\vspace*{-\baselineskip}
+\begin{table}[H]
+\begin{tabular}{ll}
+\textit{Domain changes:}   &  $\Scopemap$ \\
+\textit{Related problems:} & \ref{subsec:out-of-scope-bases} (TMU) \\
+\end{tabular}
+\end{table}
+
+In the \cink{} semantics the bases of restrict states are filtered when a scope terminates,
+but the bases of pointer values are never filtered.
+We have shown that this is insufficient because we can create pointer values with expired bases by returning a restrict pointer or assigning a restrict pointer value to a global pointer,
+leading to too much undefined behavior.
+To this end, the idea is to track all active scopes by a map $\Scopemapvar \in \Scopemap := \Scopeid \to \Booldomain$.
+A scope identifier $\Scopeidvar$ is mapped to \true \ if it is active, and \false \ if the scope has terminated or the scope identifier is unused.
+Now, every base with an inactive scope is removed from its location before the restrict check is performed,
+thus ensuring only bases that are still active are included.
+
+Listing \ref{listing:scopemap} demonstrates this on an example program.
+At line \ref{listing-deactivate-foo} the scope $\scope{foo}$ terminates, and the state is updated in $\Scopemapvar$ accordingly.
+The next memory access is a store via $p$ at line \ref{listing-line-filter-scopes} in which the $\filterinactive$ function is first called
+on the lvalue, removing the base $((\Simplelocvar_q, \emptyset), \scope{foo})$ as $\scope{foo}$ is now out of scope.
+The filtered location is $(\Simplelocvar_x, \emptyset)$ because no bases remain, making the store well-defined instead of giving undefined behavior
+which was the objective of the changes.
+
+\begin{figure}[H]
+\begin{minted}[escapeinside=||,mathescape=true,linenos]{c}
+int x;  // Stored at $\Simplelocvar_x$
+int* p; // Stored at $\Simplelocvar_p$
+
+// Scope $\scope{foo}$
+void foo(int* restrict q) { // $q$ is stored at $\Simplelocvar_{q}$
+    p = q;                  // $M(\Simplelocvar_p) = \ptr{(\Simplelocvar_x, \set{((\Simplelocvar_q, \emptyset), \scope{foo})})}$
+}                           // $S(\scope{foo}) = \false$ $\label{listing-deactivate-foo}$
+
+// Scope $\scope{main}$
+int main() {
+    p = &x;     // $M(\Simplelocvar_p) = \ptr{(\Simplelocvar_x, \emptyset)}$
+    *p = 10;    // $R(\Simplelocvar_x) = \restricted{\emptyset}$
+    foo(&x);    // $p$ gets based on $\Simplelocvar_q$
+    *p = 11;    // Store via p, $(\filterinactive \ ((\Simplelocvar_x, \set{((\Simplelocvar_q, \emptyset), \scope{foo})}), S)) = (\Simplelocvar_x, \emptyset)$$\label{listing-line-filter-scopes}$
+                // $\restricted{\emptyset} \joinsym \restricted{\emptyset} = \restricted{\emptyset}$
+    return 0;
+}
+\end{minted}
+\vspace*{-0.4cm}
+\caption{Filtering out terminated bases}
+\label{listing:scopemap}
+\end{figure}
+
+
+% In section \ref{subsec:\cink-inlining-semantics} we showed that the restrict semantics are not preserved
+% under function inlining, due to the deferred restrict check between scopes. In this section we consider two
+% alternative semantics for advancing this check directly to the point where the access occurs.
+
+% \subsection{Joining the state with all maps in the stack}
+% Intuitively, we want that the restrict state is updated throughout the entire stack
+% when an access occurs, \ie all maps get updated. The problem we have is that we don't know
+% how deep into the stack we have to go, \ie in what scope the accessed location will no longer be
+% valid.
+
+% \begin{code}
+% \begin{minted}[escapeinside=||,mathescape=true,linenos]{c}
+% // Scope $\scope{foo}$
+% void foo(int* q) {
+%     *q = 0;         // Store via $q$
+%                     // $R = [(\scope{foo}, \set{\Simplelocvar_x \mapsto \restricted{\emptyset}}), (\scope{bar}, \emptyset), \ \hdots]$
+%     while (1) {}
+% }
+
+% // Scope $\scope{bar}$
+% void bar() {
+%     int x;          // Stored at $\Simplelocvar_x$
+%                     // $R = [(\scope{bar}, \emptyset), \ \hdots]$
+%     foo(&x);
+% }
+% \end{minted}
+% % \caption{False positive: Undetected undefined behavior through different scopes}
+% % \label{lst:example-not-inlined}
+% \end{code}
+% \leavevmode
+% \\
+
+% \begin{tikzpicture}[stack/.style={rectangle split, rectangle split parts=#1,draw, anchor=center}]
+%     \node[stack=3]  {
+%     \nodepart{one} $\set{\Simplelocvar_x \mapsto \restricted{\emptyset}}$
+%     \nodepart{two} $\emptyset$
+%     \nodepart{three} $\hdots$
+%     };
+% \end{tikzpicture}
+
+
+% \subsection{Initializing the restrict map of a new scope}
+% Another way of determining whether the restrict semantics for accesses over multiple scopes get violated,
+% is by propagating the restrict state up into new scopes. The difficulty here is that the current $\Restrictstate$
+% items are insufficient: for some cases it should be allowed to join restrict states whose bases are unequal (this is
+% the purpose of $\mathtt{filter\_bases}$ in the current semantics). 
+
+% So we need a specialized $\Restrictstate$ item which propagates the restrict state of a prior scope ``upwards" into the new
+% restrict map. This item, called \init, should have the following two properties:
+
+% \begin{enumerate}
+%     \item The \joinsym \ operation should be relaxed, in the sense that it is joinable with restrict states
+%     whose bases $\Basesvar$ are a superset of the bases from \init
+% \end{enumerate}
+
+
+% \section{Nested restrict pointers}
+
+% In section \ref{subsec:\cink-nested-restrict-pointers} we demonstrated that nested restrict pointers are not handled correctly. 
+
+
+% Below we give the rule for lvalue conversion of restrict qualified locations
+% that is used by the \cink{} semantics. This rule is slightly simplified, and combines the
+% \textit{instantiate}, \textit{} 
+
+% % lvalue in rvalue position (otherwise/scalar)
+% \begin{equation}\notag
+%     \begin{mathprooftree}
+%     \AxiomC{$e, \tau \lval l$}
+%     \AxiomC{$\mathtt{read}(l, \tau) = v$}
+%     \AxiomC{$\mathtt{isRestrictType}(\tau)$}
+%     \TrinaryInfC{$e \rval \mathtt{transferProv}(\mathtt{basedOn}(\mathtt{base}(l), \mathtt{getRestrictBlock}(\tau)), v)$}
+% \end{mathprooftree}
+% \end{equation}
+
+
+% \newpage
+
+% Given a declaration of the form ``\mintinline{c}{int *restrict P;}":
+% % \begin{enumerate}
+% %     \item When \mintinline{c}{**p} occurs in lvalue position, the lvalue must have the provenance set
+% %     because we access the object $X$ via the restrict qualified pointer.
+% %     \item When \mintinline{c}{*p} occurs in rvalue position, the pointer value must have the provenance set
+% %     because the expression is ``based on" the object $P$.
+% % \end{enumerate}
+
+
+% \begin{figure}[h]
+%     \centering
+% \begin{tikzpicture}[every edge quotes/.style = {auto, font=\scriptsize, sloped}]
+% \node (P)  [cell,draw,label=$P$,pattern=north east lines,pattern color=black!30,line width=0.5pt] at  (2,0) {};
+% \node (X)  [cell,draw,label=$X$] at  (4,0) {};
+
+% \path[->]   (P)  edge["rstore"] (X);
+% \path[->]   (X)  [bend left, dashed] edge["rmodify" below] (P);
+
+% \end{tikzpicture}
+% \caption{Memory layout of a nested restrict pointer}
+% \label{fig:mem-layout-nested-restrict}
+% \end{figure}
+
+% lvalue position evaluation:
+% \vspace{-3ex}
+% \begin{prooftree}
+% \AxiomC{$E(p) = l_1$}
+% \RightLabel{\scriptsize(EId)}
+
+% \UnaryInfC{$p \lval l_1$}
+% \AxiomC{$M(l_1) = \ptr{l_2}$}
+% \RightLabel{\scriptsize(LValConv)}
+
+% \BinaryInfC{$p \rval \ptr{l_2}$}
+% \RightLabel{\scriptsize(EDeref)}
+
+% \UnaryInfC{$*p \lval l_2$}
+% \AxiomC{$M(l_2) = \ptr{l_3}$}
+% \RightLabel{\scriptsize(LValConv)}
+
+% \BinaryInfC{$\redm{*p \rval \ptr{l_3}}$}
+% \RightLabel{\scriptsize(EDeref)}
+
+% \UnaryInfC{$\mathbin{**}p \lval l_3$}
+% \end{prooftree}
+
+
+% Rvalue position evaluation:
+% \vspace{-3ex}
+
+% \begin{prooftree}
+
+% \AxiomC{$E(p) = l_1$}
+% \RightLabel{\scriptsize(EId)}
+
+% \UnaryInfC{$p \lval l_1$}
+% \AxiomC{$M(l_1) = \ptr{l_2}$}
+% \RightLabel{\scriptsize(LValConv)}
+
+% \BinaryInfC{$p \rval \ptr{l_2}$}
+% \RightLabel{\scriptsize(EDeref)}
+
+% \UnaryInfC{$*p \lval l_2$}
+% \AxiomC{$M(l_2) = \ptr{l_3}$}
+% \RightLabel{\scriptsize(LValConv)}
+
+% \BinaryInfC{$\redm{*p \rval \ptr{l_3}}$}
+% \end{prooftree}
+
+% The places where the pointer to $l_3$ is retrieved both follow the \textit{LValConv} rule.
+% Here we also have access to the restrict qualified expression $*p$ from the first
+% premise.
+
+% \[
+% \begin{array}{rll}
+%     G,E\vdash & a,M \lval l, \redm{\mathtt{option} \ \Simplelocvar}     & \text{evaluation of expressions in lvalue position} \\
+%     G,E\vdash & a,M \rval v, \redm{\mathtt{option} \ \Simplelocvar}     & \text{evaluation of expressions in rvalue position} \\
+% \end{array}
+% \]
+
+% \begin{equation} \tag{\scriptsize LValConvRes}
+% \begin{array}{ccc}
+% e \lval l_1, \Simplelocvar_{b} & l_1 = (\Simplelocvar_1, \_) & \lnot\isarray{\typeof{e}} \\
+% \isrestrict{e} & \mathtt{load}(l_1) = \ptr{(\Simplelocvar_2, \Basesvar)} & \mathtt{get\_scope()} = \Scopeidvar \\
+% \hline
+% \multicolumn{3}{c}{e \rval \ptr{(\Simplelocvar_2, \Basesvar \cup \set{(\Simplelocvar_b, \Scopeidvar), (\Simplelocvar_1, \Scopeidvar)})} }
+% \end{array}
+% \end{equation}
+
+% \newpage
+
+% \begin{code}
+% \begin{minted}[escapeinside=||,mathescape=true,linenos]{c}
+%     int foo(int *restrict *restrict p, int *restrict *restrict q)
+%     {
+%                         // $p$ is stored at $\Simplelocvar_{p}$, $q$ is stored at $\Simplelocvar_{q}$
+%                         // $M(p) = \ptr{\Simplelocvar_{xp}, \set{(\Simplelocvar_{p}, \scope{foo})}}$
+%                         // $M(q) = \ptr{\Simplelocvar_{xp}, \set{(\Simplelocvar_{q}, \scope{foo})}}$
+
+%         **p = 10;       // Store via $\mathbin{**}p$
+%                         // $R = (\scope{foo}, \set{\Simplelocvar_x \mapsto \restricted{\set{(\Simplelocvar_{xp}, \scope{foo})}, \Simplelocvar_{xp} \mapsto \onlyread{\set{(\Simplelocvar_p, \scope{foo})}}}})$
+                        
+%                         // To honor the clause "Every access that modifies X shall be
+%                         // considered also to modify P" we also need to update the
+%                         // restrict state for $\Simplelocvar_{xp}$ itself
+        
+%                         // The question is, to what?
+%                         // If it would be the provenance below if we did a Restricted,
+%                         // than the join would result in UB.
+%                         // \ie $R = (\scope{foo}, \set{\Simplelocvar_{xp} \mapsto \restricted{\set{(\Simplelocvar_{p}, \scope{foo})}}})$
+
+%         **q = 11;       // This would lead to a conflict here:
+%                         // $\join{\restricted{\set{(\Simplelocvar_{p}, \scope{foo})}}}{\restricted{\set{(\Simplelocvar_{q}, \scope{foo})}}} = \rsub$
+
+%                         // But this requires tracking the lvalue provenance
+        
+%         return **p;
+%     }
+    
+%     int main() {
+%         int x = 0;              // Stored at $\Simplelocvar_x$
+%         int* xp = &x;           // Stored at $\Simplelocvar_{xp}$
+    
+%         int res = foo(&xp, &xp);
+    
+%         return 0;
+%     }
+    
+% \end{minted}
+% % \captionof{listing}{A possible implementation of \texttt{copy}}
+% % \label{Lst:copy}
+% \end{code}
+
+% % \begin{equation}\notag
+% %     \begin{mathprooftree}
+% %     \AxiomC{$e \lval l_1, \Simplelocvar_{b}$}
+% %     \AxiomC{$l_1 = (\Simplelocvar_1, \_)$}
+% %     \AxiomC{$\lnot$\isarray{$\typeof{e}$}}
+% %     \AxiomC{\isrestrict{e}}
+% %     \AxiomC{$\mathtt{load}(l_1) = \ptr{l2}$}
+% %     \QuinaryInfC{$e \rval v$}
+% % \end{mathprooftree}
+% % \end{equation}
+
+% % \mathtt{get\_scope() = \Scopeidvar
